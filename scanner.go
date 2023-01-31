@@ -3,6 +3,7 @@ package gokonfi
 import (
 	"fmt"
 	"regexp"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 )
@@ -169,7 +170,7 @@ func (s *Scanner) NextToken() (Token, error) {
 			}
 			return tok(GreaterThan)
 		case '"', '\'':
-			return s.stringLit(r)
+			return s.stringLit(start, r)
 		case ' ', '\t', '\n', '\r':
 			// Skip whitespace
 			continue
@@ -244,9 +245,41 @@ func (s *Scanner) stringLit(start int, delim rune) (Token, error) {
 }
 
 func (s *Scanner) stringOneline(start int, delim rune) (Token, error) {
+	var b strings.Builder
+	for !s.AtEnd() {
+		r, size := utf8.DecodeRuneInString(s.input[s.pos:])
+		s.pos += size
+		if r == delim {
+			return Token{Typ: StrLiteral, Pos: start, End: s.pos, Val: b.String()}, nil
+		} else if r == '\n' || r == '\r' {
+			return Token{}, &ScanError{pos: s.pos, msg: "Unexpected newline in string literal"}
+		} else if r == '\\' && !s.AtEnd() {
+			r, size = utf8.DecodeRuneInString(s.input[s.pos:])
+			s.pos += size
+			switch r {
+			case 'n':
+				b.WriteRune('\n')
+			case 'r':
+				b.WriteRune('\r')
+			case 't':
+				b.WriteRune('\t')
+			case '"':
+				b.WriteRune('"')
+			case '\'':
+				b.WriteRune('\'')
+			case '\\':
+				b.WriteRune('\\')
+			default:
+				return Token{}, &ScanError{pos: s.pos, msg: fmt.Sprintf("Invalid escape character '%c'", r)}
+			}
+		} else {
+			b.WriteRune(r)
+		}
 
+	}
+	return Token{}, &ScanError{pos: s.pos, msg: "End of input while scanning string literal"}
 }
 
 func (s *Scanner) stringMultiline(start int, delim rune) (Token, error) {
-
+	return Token{}, &ScanError{pos: start, msg: "Multiline strings are not implemented yet"}
 }

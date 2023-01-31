@@ -157,3 +157,31 @@ func TestScanKeywords(t *testing.T) {
 
 	}
 }
+
+func TestScanOnelineString(t *testing.T) {
+	type TestData struct {
+		input, expected string
+	}
+	inputs := []TestData{
+		{`"foo's bar"`, "foo's bar"},
+		{`''`, ""},
+		{`'Say "hi"'`, "Say \"hi\""},
+		{`"a\nb\tc\\\n\r\"\'"`, "a\nb\tc\\\n\r\"'"},
+	}
+	for _, td := range inputs {
+		s := NewScanner(td.input)
+		tok, err := s.NextToken()
+		if err != nil {
+			t.Fatalf("Error scanning identifier: %s", err)
+		}
+		if !s.AtEnd() {
+			t.Fatalf("Expected to be at end. Remaining substring: %s", s.Rem())
+		}
+		if tok.Typ != StrLiteral {
+			t.Fatalf("Expected StrLiteral token, got %s", tok.Typ)
+		}
+		if tok.Val != td.expected {
+			t.Fatalf("Expected %s as Val, got %s", td.expected, tok.Val)
+		}
+	}
+}
