@@ -3,14 +3,17 @@ package gokonfi
 import (
 	"fmt"
 	"regexp"
+	"unicode"
 	"unicode/utf8"
 )
 
+// Scanner contains the full input and current scanning state.
 type Scanner struct {
 	input string
 	pos   int
 }
 
+// Creates a new scanner from the given input.
 func NewScanner(input string) Scanner {
 	return Scanner{input: input, pos: 0}
 }
@@ -20,9 +23,11 @@ type TokenType int32
 
 const (
 	Unspecified TokenType = iota
+	// Literals
 	IntLiteral
 	DoubleLiteral
 	StrLiteral
+	// Operators
 	PlusOp
 	MinusOp
 	TimesOp
@@ -33,13 +38,18 @@ const (
 	LessEq
 	GreaterThan
 	GreaterEq
-	Comma
 	Dot
+	// Separators
+	Comma
 	LeftParen
 	RightParen
 	LeftBrace
 	RightBrace
 	Colon
+	// Identifiers
+	Ident
+	Keyword
+	// Don't treat end of input as an error, but use a special token.
 	EndOfInput
 )
 
@@ -54,6 +64,13 @@ type ScanError struct {
 	pos int
 	msg string
 }
+
+var (
+	keywords = map[string]bool{
+		"func": true,
+		"let":  true,
+	}
+)
 
 func (s *ScanError) Pos() int {
 	return s.pos
@@ -79,14 +96,6 @@ func (s *Scanner) peek() rune {
 	return r
 }
 
-func (s *Scanner) advance() {
-	if s.AtEnd() {
-		return
-	}
-	_, size := utf8.DecodeRuneInString(s.input[s.pos:])
-	s.pos += size
-}
-
 func (s *Scanner) match(expected rune) bool {
 	if s.AtEnd() {
 		return false
@@ -110,6 +119,10 @@ func (s *Scanner) NextToken() (Token, error) {
 		s.pos += size
 		tok := func(t TokenType) (Token, error) {
 			return Token{Typ: t, Pos: start, End: s.pos, Val: s.input[start:s.pos]}, nil
+		}
+		// Check for identfier, which has too many possible first characters for a switch:
+		if r == '_' || unicode.IsLetter(r) {
+			return s.ident(start)
 		}
 		// Dispatch based on first character.
 		switch r {
@@ -155,6 +168,8 @@ func (s *Scanner) NextToken() (Token, error) {
 				return tok(GreaterEq)
 			}
 			return tok(GreaterThan)
+		case '"', '\'':
+			return s.stringLit(r)
 		case ' ', '\t', '\n', '\r':
 			// Skip whitespace
 			continue
@@ -174,14 +189,28 @@ func (s *Scanner) eatline() {
 	}
 }
 
+func (s *Scanner) ident(start int) (Token, error) {
+	cur := start
+	for cur < len(s.input) {
+		r, size := utf8.DecodeRuneInString(s.input[cur:])
+		if !(unicode.IsLetter(r) || r == '_' || cur > start && unicode.IsDigit(r)) {
+			break
+		}
+		cur += size
+	}
+	if cur > start {
+		s.pos = cur
+		typ := Ident
+		if _, ok := keywords[s.input[start:s.pos]]; ok {
+			typ = Keyword
+		}
+		return Token{Typ: typ, Pos: start, End: s.pos, Val: s.input[start:s.pos]}, nil
+	}
+	return Token{}, &ScanError{pos: start, msg: "Invalid identifier"}
+}
+
+// Parses IntLiterals and DoubleLiterals.
 func (s *Scanner) number(start int) (Token, error) {
-	/*
-		E			[Ee][+-]?{D}+
-		FS			(f|F|l|L)
-		{D}+{E}{FS}?		{ count(); return(CONSTANT); }
-		{D}*"."{D}+({E})?{FS}?	{ count(); return(CONSTANT); }
-		{D}+"."{D}*({E})?{FS}?	{ count(); return(CONSTANT); }
-	*/
 	re := regexp.MustCompile(`^(?:\d+[eE][+-]?\d+|\d*\.\d+(?:[eE][+-]?\d+)?|\d+\.\d*(?:[eE][+-]?\d+)?|(\d+))`)
 	ix := re.FindStringSubmatchIndex(s.input[start:])
 	if ix == nil {
@@ -190,7 +219,34 @@ func (s *Scanner) number(start int) (Token, error) {
 	s.pos = ix[1]
 	typ := IntLiteral
 	if ix[2] < 0 {
+		// Did not match the group for integer literals.
 		typ = DoubleLiteral
 	}
 	return Token{Typ: typ, Pos: start, End: s.pos, Val: s.input[start:s.pos]}, nil
+}
+
+func (s *Scanner) stringLit(start int, delim rune) (Token, error) {
+	ndelim := 1 // 1st delim was already parsed.
+	for !s.AtEnd() && s.match(delim) {
+		ndelim++
+	}
+	switch ndelim {
+	case 1:
+		// Parse string contents
+		return s.stringOneline(start, delim)
+	case 2:
+		// Empty string
+		return Token{Typ: StrLiteral, Pos: start, End: s.pos, Val: ""}, nil
+	case 3:
+		return s.stringMultiline(start, delim)
+	}
+	return Token{}, &ScanError{pos: start, msg: "Invalid string literal"}
+}
+
+func (s *Scanner) stringOneline(start int, delim rune) (Token, error) {
+
+}
+
+func (s *Scanner) stringMultiline(start int, delim rune) (Token, error) {
+
 }

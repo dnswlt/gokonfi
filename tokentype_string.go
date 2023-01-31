@@ -22,19 +22,21 @@ func _() {
 	_ = x[LessEq-11]
 	_ = x[GreaterThan-12]
 	_ = x[GreaterEq-13]
-	_ = x[Comma-14]
-	_ = x[Dot-15]
+	_ = x[Dot-14]
+	_ = x[Comma-15]
 	_ = x[LeftParen-16]
 	_ = x[RightParen-17]
 	_ = x[LeftBrace-18]
 	_ = x[RightBrace-19]
 	_ = x[Colon-20]
-	_ = x[EndOfInput-21]
+	_ = x[Ident-21]
+	_ = x[Keyword-22]
+	_ = x[EndOfInput-23]
 }
 
-const _TokenType_name = "UnspecifiedIntLiteralDoubleLiteralStrLiteralPlusOpMinusOpTimesOpDivOpEqualNotEqualLessThanLessEqGreaterThanGreaterEqCommaDotLeftParenRightParenLeftBraceRightBraceColonEndOfInput"
+const _TokenType_name = "UnspecifiedIntLiteralDoubleLiteralStrLiteralPlusOpMinusOpTimesOpDivOpEqualNotEqualLessThanLessEqGreaterThanGreaterEqDotCommaLeftParenRightParenLeftBraceRightBraceColonIdentKeywordEndOfInput"
 
-var _TokenType_index = [...]uint8{0, 11, 21, 34, 44, 50, 57, 64, 69, 74, 82, 90, 96, 107, 116, 121, 124, 133, 143, 152, 162, 167, 177}
+var _TokenType_index = [...]uint8{0, 11, 21, 34, 44, 50, 57, 64, 69, 74, 82, 90, 96, 107, 116, 119, 124, 133, 143, 152, 162, 167, 172, 179, 189}
 
 func (i TokenType) String() string {
 	if i < 0 || i >= TokenType(len(_TokenType_index)-1) {
