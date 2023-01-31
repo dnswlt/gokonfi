@@ -2,9 +2,11 @@ package gokonfi
 
 import (
 	"testing"
+
+	"github.com/dnswlt/gokonfi/token"
 )
 
-func compareTokenTypes(t *testing.T, actual, expected []TokenType) {
+func compareTokenTypes(t *testing.T, actual, expected []token.TokenType) {
 	if len(actual) != len(expected) {
 		t.Fatalf("Unexpected number of tokens: got %d, expected %d", len(actual), len(expected))
 	}
@@ -18,7 +20,7 @@ func compareTokenTypes(t *testing.T, actual, expected []TokenType) {
 func TestScanSymbols(t *testing.T) {
 	symbols := "+-*/(){}.:"
 	s := NewScanner(symbols)
-	tokenTypes := []TokenType{}
+	tokenTypes := []token.TokenType{}
 	for !s.AtEnd() {
 		tok, err := s.NextToken()
 		if err != nil {
@@ -26,13 +28,15 @@ func TestScanSymbols(t *testing.T) {
 		}
 		tokenTypes = append(tokenTypes, tok.Typ)
 	}
-	expected := []TokenType{PlusOp, MinusOp, TimesOp, DivOp, LeftParen, RightParen, LeftBrace, RightBrace, Dot, Colon}
+	expected := []token.TokenType{token.PlusOp, token.MinusOp, token.TimesOp, token.DivOp,
+		token.LeftParen, token.RightParen, token.LeftBrace, token.RightBrace, token.DotOp,
+		token.Colon}
 	compareTokenTypes(t, tokenTypes, expected)
 }
 
 func TestScanSkipsWhitespace(t *testing.T) {
 	s := NewScanner("     \t    \n   +\nx   \t\t\n   +")
-	tokenTypes := []TokenType{}
+	tokenTypes := []token.TokenType{}
 	for !s.AtEnd() {
 		tok, err := s.NextToken()
 		if err != nil {
@@ -40,7 +44,7 @@ func TestScanSkipsWhitespace(t *testing.T) {
 		}
 		tokenTypes = append(tokenTypes, tok.Typ)
 	}
-	expected := []TokenType{PlusOp, Ident, PlusOp}
+	expected := []token.TokenType{token.PlusOp, token.Ident, token.PlusOp}
 	compareTokenTypes(t, tokenTypes, expected)
 }
 
@@ -68,7 +72,7 @@ func TestScanDouble(t *testing.T) {
 		if !s.AtEnd() {
 			t.Fatalf("Expected to be at end. Remaining substring: %s", s.Rem())
 		}
-		if tok.Typ != DoubleLiteral {
+		if tok.Typ != token.DoubleLiteral {
 			t.Fatalf("Expected DoubleLiteral token, got %s", tok.Typ)
 		}
 		if tok.Val != dstr {
@@ -87,7 +91,7 @@ func TestScanInt(t *testing.T) {
 		if !s.AtEnd() {
 			t.Fatalf("Expected to be at end. Remaining substring: %s", s.Rem())
 		}
-		if tok.Typ != IntLiteral {
+		if tok.Typ != token.IntLiteral {
 			t.Fatalf("Expected IntLiteral token, got %s", tok.Typ)
 		}
 		if tok.Val != istr {
@@ -118,7 +122,7 @@ func TestScanIdentifiers(t *testing.T) {
 		if !s.AtEnd() {
 			t.Fatalf("Expected to be at end. Remaining substring: %s", s.Rem())
 		}
-		if tok.Typ != Ident {
+		if tok.Typ != token.Ident {
 			t.Fatalf("Expected Ident token, got %s", tok.Typ)
 		}
 		if tok.Val != istr {
@@ -148,7 +152,7 @@ func TestScanKeywords(t *testing.T) {
 		if !s.AtEnd() {
 			t.Fatalf("Expected to be at end. Remaining substring: %s", s.Rem())
 		}
-		if tok.Typ != Keyword {
+		if tok.Typ != token.Keyword {
 			t.Fatalf("Expected Keyword token, got %s", tok.Typ)
 		}
 		if tok.Val != istr {
@@ -177,7 +181,7 @@ func TestScanOnelineString(t *testing.T) {
 		if !s.AtEnd() {
 			t.Fatalf("Expected to be at end. Remaining substring: %s", s.Rem())
 		}
-		if tok.Typ != StrLiteral {
+		if tok.Typ != token.StrLiteral {
 			t.Fatalf("Expected StrLiteral token, got %s", tok.Typ)
 		}
 		if tok.Val != td.expected {
