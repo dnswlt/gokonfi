@@ -11,6 +11,7 @@ import (
 // Scanner contains the full input and current scanning state.
 type Scanner struct {
 	input string
+	mark  int
 	pos   int
 }
 
@@ -89,6 +90,19 @@ func (s *Scanner) Rem() string {
 	return s.input[s.pos:]
 }
 
+func (s *Scanner) setMark() {
+	s.mark = s.pos
+}
+
+func (s *Scanner) advance() rune {
+	if s.AtEnd() {
+		return 0
+	}
+	r, size := utf8.DecodeRuneInString(s.input[s.pos:])
+	s.pos += size
+	return r
+}
+
 func (s *Scanner) peek() rune {
 	if s.AtEnd() {
 		return 0
@@ -98,11 +112,8 @@ func (s *Scanner) peek() rune {
 }
 
 func (s *Scanner) match(expected rune) bool {
-	if s.AtEnd() {
-		return false
-	}
-	if r, size := utf8.DecodeRuneInString(s.input[s.pos:]); r == expected {
-		s.pos += size
+	if s.peek() == expected {
+		s.advance()
 		return true
 	}
 	return false
@@ -111,19 +122,18 @@ func (s *Scanner) match(expected rune) bool {
 func (s *Scanner) NextToken() (Token, error) {
 	// Iterate until a token is found, skipping comments and whitespace.
 	for !s.AtEnd() {
-		r, size := utf8.DecodeRuneInString(s.input[s.pos:])
+		s.setMark()
+		r := s.advance()
 		if r == utf8.RuneError {
-			return Token{}, &ScanError{pos: s.pos, msg: "Invalid UTF-8 code point"}
+			return Token{}, &ScanError{pos: s.mark, msg: "Invalid UTF-8 code point"}
 		}
 		// Advance scanner
-		start := s.pos
-		s.pos += size
 		tok := func(t TokenType) (Token, error) {
-			return Token{Typ: t, Pos: start, End: s.pos, Val: s.input[start:s.pos]}, nil
+			return Token{Typ: t, Pos: s.mark, End: s.pos, Val: s.input[s.mark:s.pos]}, nil
 		}
 		// Check for identfier, which has too many possible first characters for a switch:
 		if r == '_' || unicode.IsLetter(r) {
-			return s.ident(start)
+			return s.ident()
 		}
 		// Dispatch based on first character.
 		switch r {
@@ -154,11 +164,11 @@ func (s *Scanner) NextToken() (Token, error) {
 		case '.':
 			u := s.peek()
 			if u >= '0' && u <= '9' {
-				return s.number(start)
+				return s.number()
 			}
 			return tok(Dot)
 		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-			return s.number(start)
+			return s.number()
 		case '<':
 			if s.match('=') {
 				return tok(LessEq)
@@ -170,12 +180,12 @@ func (s *Scanner) NextToken() (Token, error) {
 			}
 			return tok(GreaterThan)
 		case '"', '\'':
-			return s.stringLit(start, r)
+			return s.stringLit(r)
 		case ' ', '\t', '\n', '\r':
 			// Skip whitespace
 			continue
 		}
-		return Token{}, &ScanError{pos: start, msg: fmt.Sprintf("Invalid lexeme '%c'", r)}
+		return Token{}, &ScanError{pos: s.mark, msg: fmt.Sprintf("Invalid lexeme '%c'", r)}
 	}
 	return Token{Typ: EndOfInput, Pos: s.pos, End: s.pos, Val: "<eoi>"}, nil
 }
@@ -190,32 +200,36 @@ func (s *Scanner) eatline() {
 	}
 }
 
-func (s *Scanner) ident(start int) (Token, error) {
-	cur := start
+func (s *Scanner) token(typ TokenType) Token {
+	return Token{Typ: typ, Pos: s.mark, End: s.pos, Val: s.input[s.mark:s.pos]}
+}
+
+func (s *Scanner) ident() (Token, error) {
+	cur := s.mark
 	for cur < len(s.input) {
 		r, size := utf8.DecodeRuneInString(s.input[cur:])
-		if !(unicode.IsLetter(r) || r == '_' || cur > start && unicode.IsDigit(r)) {
+		if !(unicode.IsLetter(r) || r == '_' || cur > s.mark && unicode.IsDigit(r)) {
 			break
 		}
 		cur += size
 	}
-	if cur > start {
+	if cur > s.mark {
 		s.pos = cur
 		typ := Ident
-		if _, ok := keywords[s.input[start:s.pos]]; ok {
+		if _, ok := keywords[s.input[s.mark:s.pos]]; ok {
 			typ = Keyword
 		}
-		return Token{Typ: typ, Pos: start, End: s.pos, Val: s.input[start:s.pos]}, nil
+		return s.token(typ), nil
 	}
-	return Token{}, &ScanError{pos: start, msg: "Invalid identifier"}
+	return Token{}, &ScanError{pos: s.mark, msg: "Invalid identifier"}
 }
 
 // Parses IntLiterals and DoubleLiterals.
-func (s *Scanner) number(start int) (Token, error) {
+func (s *Scanner) number() (Token, error) {
 	re := regexp.MustCompile(`^(?:\d+[eE][+-]?\d+|\d*\.\d+(?:[eE][+-]?\d+)?|\d+\.\d*(?:[eE][+-]?\d+)?|(\d+))`)
-	ix := re.FindStringSubmatchIndex(s.input[start:])
+	ix := re.FindStringSubmatchIndex(s.input[s.mark:])
 	if ix == nil {
-		return Token{}, &ScanError{pos: start, msg: "Invalid double literal"}
+		return Token{}, &ScanError{pos: s.mark, msg: "Invalid double literal"}
 	}
 	s.pos = ix[1]
 	typ := IntLiteral
@@ -223,10 +237,10 @@ func (s *Scanner) number(start int) (Token, error) {
 		// Did not match the group for integer literals.
 		typ = DoubleLiteral
 	}
-	return Token{Typ: typ, Pos: start, End: s.pos, Val: s.input[start:s.pos]}, nil
+	return s.token(typ), nil
 }
 
-func (s *Scanner) stringLit(start int, delim rune) (Token, error) {
+func (s *Scanner) stringLit(delim rune) (Token, error) {
 	ndelim := 1 // 1st delim was already parsed.
 	for !s.AtEnd() && s.match(delim) {
 		ndelim++
@@ -234,28 +248,27 @@ func (s *Scanner) stringLit(start int, delim rune) (Token, error) {
 	switch ndelim {
 	case 1:
 		// Parse string contents
-		return s.stringOneline(start, delim)
+		return s.stringOneline(delim)
 	case 2:
 		// Empty string
-		return Token{Typ: StrLiteral, Pos: start, End: s.pos, Val: ""}, nil
+		return Token{Typ: StrLiteral, Pos: s.mark, End: s.pos, Val: ""}, nil
 	case 3:
-		return s.stringMultiline(start, delim)
+		return s.stringMultiline(delim)
 	}
-	return Token{}, &ScanError{pos: start, msg: "Invalid string literal"}
+	return Token{}, &ScanError{pos: s.mark, msg: "Invalid string literal"}
 }
 
-func (s *Scanner) stringOneline(start int, delim rune) (Token, error) {
+func (s *Scanner) stringOneline(delim rune) (Token, error) {
 	var b strings.Builder
 	for !s.AtEnd() {
-		r, size := utf8.DecodeRuneInString(s.input[s.pos:])
-		s.pos += size
+		r := s.advance()
 		if r == delim {
-			return Token{Typ: StrLiteral, Pos: start, End: s.pos, Val: b.String()}, nil
+			return Token{Typ: StrLiteral, Pos: s.mark, End: s.pos, Val: b.String()}, nil
 		} else if r == '\n' || r == '\r' {
 			return Token{}, &ScanError{pos: s.pos, msg: "Unexpected newline in string literal"}
-		} else if r == '\\' && !s.AtEnd() {
-			r, size = utf8.DecodeRuneInString(s.input[s.pos:])
-			s.pos += size
+		} else if r == '\\' {
+			// TODO: this will yield a slightly confusing error message when we're at EOI.
+			r = s.advance()
 			switch r {
 			case 'n':
 				b.WriteRune('\n')
@@ -280,6 +293,6 @@ func (s *Scanner) stringOneline(start int, delim rune) (Token, error) {
 	return Token{}, &ScanError{pos: s.pos, msg: "End of input while scanning string literal"}
 }
 
-func (s *Scanner) stringMultiline(start int, delim rune) (Token, error) {
-	return Token{}, &ScanError{pos: start, msg: "Multiline strings are not implemented yet"}
+func (s *Scanner) stringMultiline(delim rune) (Token, error) {
+	return Token{}, &ScanError{pos: s.mark, msg: "Multiline strings are not implemented yet"}
 }
