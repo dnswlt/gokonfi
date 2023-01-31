@@ -28,13 +28,15 @@ type ScanError struct {
 }
 
 var (
-	keywords = map[string]bool{
-		"func":  true,
-		"let":   true,
-		"true":  true,
-		"false": true,
-		"nil":   true,
+	keywords = map[string]token.TokenType{
+		"func":  token.Func,
+		"let":   token.Let,
+		"true":  token.BoolLiteral,
+		"false": token.BoolLiteral,
+		"nil":   token.NilLiteral,
 	}
+
+	numberRegexp = regexp.MustCompile(`^(?:\d+[eE][+-]?\d+|\d*\.\d+(?:[eE][+-]?\d+)?|\d+\.\d*(?:[eE][+-]?\d+)?|(\d+))`)
 )
 
 func (s *ScanError) Pos() int {
@@ -113,23 +115,23 @@ func (s *Scanner) NextToken() (token.Token, error) {
 		case ':':
 			return tok(token.Colon)
 		case '+':
-			return tok(token.PlusOp)
+			return tok(token.Plus)
 		case '-':
-			return tok(token.MinusOp)
+			return tok(token.Minus)
 		case '*':
-			return tok(token.TimesOp)
+			return tok(token.Times)
 		case '/':
 			if s.match('/') {
 				s.eatline()
 				continue
 			}
-			return tok(token.DivOp)
+			return tok(token.Div)
 		case '.':
 			u := s.peek()
 			if u >= '0' && u <= '9' {
 				return s.number()
 			}
-			return tok(token.DotOp)
+			return tok(token.Dot)
 		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
 			return s.number()
 		case '<':
@@ -163,8 +165,12 @@ func (s *Scanner) eatline() {
 	}
 }
 
+func (s *Scanner) val() string {
+	return s.input[s.mark:s.pos]
+}
+
 func (s *Scanner) token(typ token.TokenType) token.Token {
-	return token.Token{Typ: typ, Pos: s.mark, End: s.pos, Val: s.input[s.mark:s.pos]}
+	return token.Token{Typ: typ, Pos: s.mark, End: s.pos, Val: s.val()}
 }
 
 func (s *Scanner) ident() (token.Token, error) {
@@ -179,8 +185,8 @@ func (s *Scanner) ident() (token.Token, error) {
 	if cur > s.mark {
 		s.pos = cur
 		typ := token.Ident
-		if _, ok := keywords[s.input[s.mark:s.pos]]; ok {
-			typ = token.Keyword
+		if kwTyp, ok := keywords[s.val()]; ok {
+			typ = kwTyp
 		}
 		return s.token(typ), nil
 	}
@@ -189,12 +195,11 @@ func (s *Scanner) ident() (token.Token, error) {
 
 // Parses IntLiterals and DoubleLiterals.
 func (s *Scanner) number() (token.Token, error) {
-	re := regexp.MustCompile(`^(?:\d+[eE][+-]?\d+|\d*\.\d+(?:[eE][+-]?\d+)?|\d+\.\d*(?:[eE][+-]?\d+)?|(\d+))`)
-	ix := re.FindStringSubmatchIndex(s.input[s.mark:])
+	ix := numberRegexp.FindStringSubmatchIndex(s.input[s.mark:])
 	if ix == nil {
 		return token.Token{}, &ScanError{pos: s.mark, msg: "Invalid double literal"}
 	}
-	s.pos = ix[1]
+	s.pos = s.mark + ix[1]
 	typ := token.IntLiteral
 	if ix[2] < 0 {
 		// Did not match the group for integer literals.

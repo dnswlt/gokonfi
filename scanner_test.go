@@ -28,9 +28,25 @@ func TestScanSymbols(t *testing.T) {
 		}
 		tokenTypes = append(tokenTypes, tok.Typ)
 	}
-	expected := []token.TokenType{token.PlusOp, token.MinusOp, token.TimesOp, token.DivOp,
-		token.LeftParen, token.RightParen, token.LeftBrace, token.RightBrace, token.DotOp,
+	expected := []token.TokenType{token.Plus, token.Minus, token.Times, token.Div,
+		token.LeftParen, token.RightParen, token.LeftBrace, token.RightBrace, token.Dot,
 		token.Colon}
+	compareTokenTypes(t, tokenTypes, expected)
+}
+
+func TestScanExpr(t *testing.T) {
+	symbols := "2 * (3 + 4)"
+	s := NewScanner(symbols)
+	tokenTypes := []token.TokenType{}
+	for !s.AtEnd() {
+		tok, err := s.NextToken()
+		if err != nil {
+			t.Fatalf("Error scanning symbols: %s", err)
+		}
+		tokenTypes = append(tokenTypes, tok.Typ)
+	}
+	expected := []token.TokenType{token.IntLiteral, token.Times, token.LeftParen, token.IntLiteral,
+		token.Plus, token.IntLiteral, token.RightParen}
 	compareTokenTypes(t, tokenTypes, expected)
 }
 
@@ -44,7 +60,7 @@ func TestScanSkipsWhitespace(t *testing.T) {
 		}
 		tokenTypes = append(tokenTypes, tok.Typ)
 	}
-	expected := []token.TokenType{token.PlusOp, token.Ident, token.PlusOp}
+	expected := []token.TokenType{token.Plus, token.Ident, token.Plus}
 	compareTokenTypes(t, tokenTypes, expected)
 }
 
@@ -143,8 +159,15 @@ func TestScanIdentifiersInvalidChars(t *testing.T) {
 }
 
 func TestScanKeywords(t *testing.T) {
-	for _, istr := range []string{"let", "func"} {
-		s := NewScanner(istr)
+	type TestData struct {
+		input        string
+		expectedType token.TokenType
+	}
+	for _, td := range []TestData{
+		{"let", token.Let},
+		{"func", token.Func},
+	} {
+		s := NewScanner(td.input)
 		tok, err := s.NextToken()
 		if err != nil {
 			t.Fatalf("Error scanning keyword: %s", err)
@@ -152,11 +175,11 @@ func TestScanKeywords(t *testing.T) {
 		if !s.AtEnd() {
 			t.Fatalf("Expected to be at end. Remaining substring: %s", s.Rem())
 		}
-		if tok.Typ != token.Keyword {
+		if tok.Typ != td.expectedType {
 			t.Fatalf("Expected Keyword token, got %s", tok.Typ)
 		}
-		if tok.Val != istr {
-			t.Fatalf("Expected %s as Val, got %s", istr, tok.Val)
+		if tok.Val != td.input {
+			t.Fatalf("Expected %s as Val, got %s", td.input, tok.Val)
 		}
 
 	}

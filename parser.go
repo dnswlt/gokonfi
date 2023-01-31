@@ -1,10 +1,24 @@
 package gokonfi
 
-import "github.com/dnswlt/gokonfi/token"
+import (
+	"fmt"
+	"strconv"
+
+	"github.com/dnswlt/gokonfi/token"
+)
 
 type Parser struct {
-	scanner   Scanner
-	lookahead []token.Token
+	tokens  []token.Token
+	current int
+}
+
+type ParseError struct {
+	tok token.Token
+	msg string
+}
+
+func (e *ParseError) Error() string {
+	return fmt.Sprintf("ParseError: %s at position %d", e.msg, e.tok.Pos)
 }
 
 type Node interface {
@@ -24,6 +38,24 @@ type BinaryExpr struct {
 	Y     Expr
 }
 
+type UnaryExpr struct {
+	X     Expr
+	OpPos int
+	Op    token.TokenType
+}
+
+type IntLiteral struct {
+	Val    int64
+	ValPos int
+	ValEnd int
+}
+
+type BoolLiteral struct {
+	Val    bool
+	ValPos int
+	ValEnd int
+}
+
 func (e *BinaryExpr) Pos() int {
 	return e.X.Pos()
 }
@@ -34,35 +66,224 @@ func (e *BinaryExpr) End() int {
 
 func (e *BinaryExpr) exprNode() {}
 
-func NewParser(s Scanner) Parser {
-	return Parser{scanner: s}
+func (e *UnaryExpr) Pos() int {
+	return e.OpPos
 }
 
-func (p *Parser) advance() (token.Token, error) {
-	if len(p.lookahead) > 0 {
-		cur := p.lookahead[0]
-		p.lookahead = p.lookahead[1:]
-		return cur, nil
-	}
-	return p.scanner.NextToken()
+func (e *UnaryExpr) End() int {
+	return e.X.End()
 }
 
-func (p *Parser) peek() (token.Token, error) {
-	if len(p.lookahead) > 0 {
-		return p.lookahead[0], nil
+func (e *UnaryExpr) exprNode() {}
+
+func (e *IntLiteral) Pos() int {
+	return e.ValPos
+}
+
+func (e *IntLiteral) End() int {
+	return e.ValEnd
+}
+
+func (e *IntLiteral) exprNode() {}
+
+func (e *BoolLiteral) Pos() int {
+	return e.ValPos
+}
+
+func (e *BoolLiteral) End() int {
+	return e.ValEnd
+}
+
+func (e *BoolLiteral) exprNode() {}
+
+func NewParser(tokens []token.Token) Parser {
+	return Parser{tokens: tokens, current: 0}
+}
+
+func (p *Parser) advance() token.Token {
+	if !p.AtEnd() {
+		p.current++
 	}
-	t, err := p.scanner.NextToken()
-	if err == nil {
-		p.lookahead = append(p.lookahead, t)
+	return p.previous()
+}
+
+func (p *Parser) previous() token.Token {
+	return p.tokens[p.current-1]
+}
+
+func (p *Parser) peek() token.Token {
+	return p.tokens[p.current]
+}
+
+func (p *Parser) match(tokenTypes ...token.TokenType) bool {
+	t := p.peek()
+	for _, typ := range tokenTypes {
+		if t.Typ == typ {
+			p.advance()
+			return true
+		}
 	}
-	return t, err
+	return false
 }
 
 func (p *Parser) AtEnd() bool {
-	t, _ := p.peek()
-	return t.Typ == token.EndOfInput
+	return p.current >= len(p.tokens)-1
 }
 
+/*
+
+Precedence    Operator
+    5             *  /  %  <<  >>  &  &^
+    4             +  -  |  ^
+    3             ==  !=  <  <=  >  >=
+    2             &&
+    1             ||
+
+expression     -> logical_or ;
+logical_or     -> logical_and ( "||" logical_and )* ;
+logical_and    -> comparison ( "&&" comparison )* ;
+comparison     -> term ( ( "!=" | "==" | ">" | ">=" | "<" | "<=" ) term )* ;
+term           -> factor ( ( "-" | "+" | "|" | "^" ) factor )* ;
+factor         -> unary ( ( "/" | "*" | "%" | "<<" | ">>" | "&" ) unary )* ;
+unary          -> ( "!" | "-" ) unary
+               | primary ;
+primary        -> NUMBER | STRING | "true" | "false" | "nil"
+               | "(" expression ")" ;
+*/
+
 func (p *Parser) Expression() (Expr, error) {
-	return &BinaryExpr{X: nil, OpPos: 0, Op: token.PlusOp, Y: nil}, nil
+	return p.logicalOr()
+}
+
+// logical_or     -> logical_and ( "||" logical_and )* ;
+func (p *Parser) logicalOr() (Expr, error) {
+	x, err := p.logicalAnd()
+	if err != nil {
+		return nil, err
+	}
+	for p.match(token.LogicalOr) {
+		t := p.previous()
+		y, err := p.logicalAnd()
+		if err != nil {
+			return nil, err
+		}
+		x = &BinaryExpr{X: x, OpPos: t.Pos, Op: t.Typ, Y: y}
+	}
+	return x, nil
+}
+
+// logical_and    -> comparison ( "&&" comparison )* ;
+func (p *Parser) logicalAnd() (Expr, error) {
+	x, err := p.comparison()
+	if err != nil {
+		return nil, err
+	}
+	for p.match(token.LogicalAnd) {
+		t := p.previous()
+		y, err := p.comparison()
+		if err != nil {
+			return nil, err
+		}
+		x = &BinaryExpr{X: x, OpPos: t.Pos, Op: t.Typ, Y: y}
+	}
+	return x, nil
+}
+
+// comparison     -> term ( ( "!=" | "==" | ">" | ">=" | "<" | "<=" ) term )* ;
+func (p *Parser) comparison() (Expr, error) {
+	x, err := p.term()
+	if err != nil {
+		return nil, err
+	}
+	for p.match(token.NotEqual, token.Equal, token.GreaterThan, token.GreaterEq, token.LessThan, token.LessEq) {
+		t := p.previous()
+		y, err := p.term()
+		if err != nil {
+			return nil, err
+		}
+		x = &BinaryExpr{X: x, OpPos: t.Pos, Op: t.Typ, Y: y}
+	}
+	return x, nil
+}
+
+// term           -> factor ( ( "-" | "+" | "|" | "^" ) factor )* ;
+func (p *Parser) term() (Expr, error) {
+	x, err := p.factor()
+	if err != nil {
+		return nil, err
+	}
+	for p.match(token.Minus, token.Plus, token.BitwiseOr, token.BitwiseXor) {
+		t := p.previous()
+		y, err := p.factor()
+		if err != nil {
+			return nil, err
+		}
+		x = &BinaryExpr{X: x, OpPos: t.Pos, Op: t.Typ, Y: y}
+	}
+	return x, nil
+}
+
+// factor         -> unary ( ( "/" | "*" | "%" | "<<" | ">>" | "&" ) unary )* ;
+func (p *Parser) factor() (Expr, error) {
+	x, err := p.unary()
+	if err != nil {
+		return nil, err
+	}
+	for p.match(token.Div, token.Times, token.Modulo, token.ShiftLeft, token.ShiftRight, token.BitwiseAnd) {
+		t := p.previous()
+		y, err := p.unary()
+		if err != nil {
+			return nil, err
+		}
+		x = &BinaryExpr{X: x, OpPos: t.Pos, Op: t.Typ, Y: y}
+	}
+	return x, nil
+}
+
+// unary          -> ( "!" | "-" ) unary
+//
+//	| primary ;
+func (p *Parser) unary() (Expr, error) {
+	if p.match(token.Minus, token.Complement, token.Not) {
+		t := p.previous()
+		x, err := p.unary()
+		if err != nil {
+			return nil, err
+		}
+		return &UnaryExpr{X: x, OpPos: t.Pos, Op: t.Typ}, nil
+	}
+	return p.primary()
+}
+
+// primary        -> NUMBER | STRING | "true" | "false" | "nil"
+//
+//	| "(" expression ")" ;
+func (p *Parser) primary() (Expr, error) {
+	if p.match(token.LeftParen) {
+		e, err := p.Expression()
+		if err != nil {
+			return nil, err
+		}
+		if !p.match(token.RightParen) {
+			return nil, &ParseError{tok: p.previous(), msg: fmt.Sprintf("Expected ')', got %s", p.previous().Val)}
+		}
+		return e, nil
+	}
+	if p.match(token.BoolLiteral) {
+		t := p.previous()
+		b := true
+		if t.Val == "false" {
+			b = false
+		}
+		return &BoolLiteral{Val: b, ValPos: t.Pos, ValEnd: t.End}, nil
+	}
+	if p.match(token.IntLiteral) {
+		t := p.previous()
+		x, err := strconv.ParseInt(t.Val, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		return &IntLiteral{Val: x, ValPos: t.Pos, ValEnd: t.End}, nil
+	}
+	return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("Unexpected token type %s for primary expression", p.peek().Typ)}
 }

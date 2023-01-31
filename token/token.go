@@ -12,18 +12,27 @@ const (
 	DoubleLiteral
 	StrLiteral
 	// Operators
-	PlusOp
-	MinusOp
-	TimesOp
-	DivOp
+	Plus
+	Minus
+	Times
+	Div
+	Modulo
 	Equal
 	NotEqual
 	LessThan
 	LessEq
 	GreaterThan
 	GreaterEq
+	LogicalAnd
+	LogicalOr
+	BitwiseOr
+	BitwiseAnd
+	BitwiseXor
+	ShiftLeft
+	ShiftRight
 	Dot
 	Not
+	Complement
 	// Separators
 	Comma
 	LeftParen
@@ -33,7 +42,9 @@ const (
 	Colon
 	// Identifiers
 	Ident
-	Keyword
+	// Keywords
+	Func
+	Let
 	// Don't treat end of input as an error, but use a special token.
 	EndOfInput
 )
