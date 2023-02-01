@@ -39,6 +39,8 @@ const (
 	RightParen
 	LeftBrace
 	RightBrace
+	LeftSquare
+	RightSquare
 	Colon
 	// Identifiers
 	Ident
