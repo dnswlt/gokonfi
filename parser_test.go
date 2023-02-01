@@ -60,6 +60,83 @@ func TestParseFieldAcc(t *testing.T) {
 	}
 }
 
+// Compare two expressions, ignoring token positions
+func compareExpr(t *testing.T, lhs, rhs Expr) {
+	switch v := lhs.(type) {
+	case *IntLiteral:
+		w, ok := rhs.(*IntLiteral)
+		if !ok {
+			t.Fatalf("Expected rhs of type %T, got %T", v, rhs)
+		}
+		if v.Val != w.Val {
+			t.Fatalf("Expected %d, got %d", v.Val, w.Val)
+		}
+	case *StrLiteral:
+		w, ok := rhs.(*StrLiteral)
+		if !ok {
+			t.Fatalf("Expected rhs of type %T, got %T", v, rhs)
+		}
+		if v.Val != w.Val {
+			t.Fatalf("Expected \"%s\", got \"%s\"", v.Val, w.Val)
+		}
+	case *RecExpr:
+		w, ok := rhs.(*RecExpr)
+		if !ok {
+			t.Fatalf("Expected rhs of type %T, got %T", v, rhs)
+		}
+		if len(v.Fields) != len(w.Fields) {
+			t.Fatalf("Expected %d record fields, got %d", len(v.Fields), len(w.Fields))
+		}
+		for f := range v.Fields {
+			if _, ok := w.Fields[f]; !ok {
+				t.Fatalf("Expected field .%s in rhs", f)
+			} else {
+				compareExpr(t, v.Fields[f].Val, w.Fields[f].Val)
+			}
+		}
+	}
+}
+
+// Test helpers to generate expressions.
+func rec(fields ...*RecField) *RecExpr {
+	fieldMap := make(map[string]RecField)
+	for _, f := range fields {
+		fieldMap[f.Name] = *f
+	}
+	return &RecExpr{LetVars: make(map[string]LetVar), Fields: fieldMap}
+}
+func fld(name string, val Expr) *RecField {
+	return &RecField{Name: name, Val: val}
+}
+func intval(i int64) *IntLiteral {
+	return &IntLiteral{Val: i}
+}
+func strval(s string) *StrLiteral {
+	return &StrLiteral{Val: s}
+}
+
+func TestParseRecordExpr2(t *testing.T) {
+	ts, err := scanTokens(`{
+		x: 1 
+		y: "a"
+		z: {
+			w: 0
+		}
+	}`)
+	if err != nil {
+		t.Fatalf("Unexpected error while scanning the input: %s", err)
+	}
+	p := NewParser(ts)
+	e, err := p.Expression()
+	if err != nil {
+		t.Fatalf("Could not parse expression: %s", err)
+	}
+	compareExpr(t, e,
+		rec(fld("x", intval(1)),
+			fld("y", strval("a")),
+			fld("z", rec(fld("w", intval(0))))))
+}
+
 func TestParseRecordExpr(t *testing.T) {
 	ts, err := scanTokens(`{
 		let a: 9

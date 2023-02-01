@@ -44,6 +44,12 @@ type UnaryExpr struct {
 	Op    token.TokenType
 }
 
+type VarExpr struct {
+	Name    string
+	NamePos token.Pos
+	NameEnd token.Pos
+}
+
 type FieldAcc struct {
 	X       Expr
 	Name    string
@@ -148,6 +154,16 @@ func (e *StrLiteral) End() token.Pos {
 }
 
 func (e *StrLiteral) exprNode() {}
+
+func (e *VarExpr) Pos() token.Pos {
+	return e.NamePos
+}
+
+func (e *VarExpr) End() token.Pos {
+	return e.NameEnd
+}
+
+func (e *VarExpr) exprNode() {}
 
 func (e *RecExpr) Pos() token.Pos {
 	return e.RecPos
@@ -365,6 +381,9 @@ func (p *Parser) operand() (Expr, error) {
 	case p.match(token.StrLiteral):
 		t := p.previous()
 		return &StrLiteral{Val: t.Val, ValPos: t.Pos, ValEnd: t.End}, nil
+	case p.match(token.Ident):
+		t := p.previous()
+		return &VarExpr{Name: t.Val, NamePos: t.Pos, NameEnd: t.End}, nil
 	case p.match(token.IntLiteral):
 		t := p.previous()
 		x, err := strconv.ParseInt(t.Val, 10, 64)
