@@ -23,7 +23,7 @@ func NewScanner(input string) Scanner {
 }
 
 type ScanError struct {
-	pos int
+	pos token.Pos
 	msg string
 }
 
@@ -39,7 +39,7 @@ var (
 	numberRegexp = regexp.MustCompile(`^(?:\d+[eE][+-]?\d+|\d*\.\d+(?:[eE][+-]?\d+)?|\d+\.\d*(?:[eE][+-]?\d+)?|(\d+))`)
 )
 
-func (s *ScanError) Pos() int {
+func (s *ScanError) Pos() token.Pos {
 	return s.pos
 }
 
@@ -84,18 +84,27 @@ func (s *Scanner) match(expected rune) bool {
 	return false
 }
 
+func (s *Scanner) val() string {
+	return s.input[s.mark:s.pos]
+}
+
+func (s *Scanner) token(typ token.TokenType) (token.Token, error) {
+	return s.tokenVal(typ, s.val())
+}
+
+func (s *Scanner) tokenVal(typ token.TokenType, val string) (token.Token, error) {
+	return token.Token{Typ: typ, Pos: token.Pos(s.mark), End: token.Pos(s.pos), Val: val}, nil
+}
+
 func (s *Scanner) NextToken() (token.Token, error) {
 	// Iterate until a token is found, skipping comments and whitespace.
 	for !s.AtEnd() {
 		s.setMark()
 		r := s.advance()
 		if r == utf8.RuneError {
-			return token.Token{}, &ScanError{pos: s.mark, msg: "Invalid UTF-8 code point"}
+			return token.Token{}, &ScanError{pos: token.Pos(s.mark), msg: "Invalid UTF-8 code point"}
 		}
 		// Advance scanner
-		tok := func(t token.TokenType) (token.Token, error) {
-			return token.Token{Typ: t, Pos: s.mark, End: s.pos, Val: s.input[s.mark:s.pos]}, nil
-		}
 		// Check for identfier, which has too many possible first characters for a switch:
 		if r == '_' || unicode.IsLetter(r) {
 			return s.ident()
@@ -103,56 +112,56 @@ func (s *Scanner) NextToken() (token.Token, error) {
 		// Dispatch based on first character.
 		switch r {
 		case '(':
-			return tok(token.LeftParen)
+			return s.token(token.LeftParen)
 		case ')':
-			return tok(token.RightParen)
+			return s.token(token.RightParen)
 		case '{':
-			return tok(token.LeftBrace)
+			return s.token(token.LeftBrace)
 		case '}':
-			return tok(token.RightBrace)
+			return s.token(token.RightBrace)
 		case ',':
-			return tok(token.Comma)
+			return s.token(token.Comma)
 		case ':':
-			return tok(token.Colon)
+			return s.token(token.Colon)
 		case '+':
-			return tok(token.Plus)
+			return s.token(token.Plus)
 		case '-':
-			return tok(token.Minus)
+			return s.token(token.Minus)
 		case '*':
-			return tok(token.Times)
+			return s.token(token.Times)
 		case '/':
 			if s.match('/') {
 				s.eatline()
 				continue
 			}
-			return tok(token.Div)
+			return s.token(token.Div)
 		case '.':
 			u := s.peek()
 			if u >= '0' && u <= '9' {
 				return s.number()
 			}
-			return tok(token.Dot)
+			return s.token(token.Dot)
 		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
 			return s.number()
 		case '<':
 			if s.match('=') {
-				return tok(token.LessEq)
+				return s.token(token.LessEq)
 			}
-			return tok(token.LessThan)
+			return s.token(token.LessThan)
 		case '>':
 			if s.match('=') {
-				return tok(token.GreaterEq)
+				return s.token(token.GreaterEq)
 			}
-			return tok(token.GreaterThan)
+			return s.token(token.GreaterThan)
 		case '"', '\'':
 			return s.stringLit(r)
 		case ' ', '\t', '\n', '\r':
 			// Skip whitespace
 			continue
 		}
-		return token.Token{}, &ScanError{pos: s.mark, msg: fmt.Sprintf("Invalid lexeme '%c'", r)}
+		return token.Token{}, &ScanError{pos: token.Pos(s.mark), msg: fmt.Sprintf("Invalid lexeme '%c'", r)}
 	}
-	return token.Token{Typ: token.EndOfInput, Pos: s.pos, End: s.pos, Val: "<eoi>"}, nil
+	return s.token(token.EndOfInput)
 }
 
 func (s *Scanner) eatline() {
@@ -163,14 +172,6 @@ func (s *Scanner) eatline() {
 			return
 		}
 	}
-}
-
-func (s *Scanner) val() string {
-	return s.input[s.mark:s.pos]
-}
-
-func (s *Scanner) token(typ token.TokenType) token.Token {
-	return token.Token{Typ: typ, Pos: s.mark, End: s.pos, Val: s.val()}
 }
 
 func (s *Scanner) ident() (token.Token, error) {
@@ -188,16 +189,16 @@ func (s *Scanner) ident() (token.Token, error) {
 		if kwTyp, ok := keywords[s.val()]; ok {
 			typ = kwTyp
 		}
-		return s.token(typ), nil
+		return s.token(typ)
 	}
-	return token.Token{}, &ScanError{pos: s.mark, msg: "Invalid identifier"}
+	return token.Token{}, &ScanError{pos: token.Pos(s.mark), msg: "Invalid identifier"}
 }
 
 // Parses IntLiterals and DoubleLiterals.
 func (s *Scanner) number() (token.Token, error) {
 	ix := numberRegexp.FindStringSubmatchIndex(s.input[s.mark:])
 	if ix == nil {
-		return token.Token{}, &ScanError{pos: s.mark, msg: "Invalid double literal"}
+		return token.Token{}, &ScanError{pos: token.Pos(s.mark), msg: "Invalid double literal"}
 	}
 	s.pos = s.mark + ix[1]
 	typ := token.IntLiteral
@@ -205,7 +206,7 @@ func (s *Scanner) number() (token.Token, error) {
 		// Did not match the group for integer literals.
 		typ = token.DoubleLiteral
 	}
-	return s.token(typ), nil
+	return s.token(typ)
 }
 
 func (s *Scanner) stringLit(delim rune) (token.Token, error) {
@@ -219,11 +220,11 @@ func (s *Scanner) stringLit(delim rune) (token.Token, error) {
 		return s.stringOneline(delim)
 	case 2:
 		// Empty string
-		return token.Token{Typ: token.StrLiteral, Pos: s.mark, End: s.pos, Val: ""}, nil
+		return s.tokenVal(token.StrLiteral, "")
 	case 3:
 		return s.stringMultiline(delim)
 	}
-	return token.Token{}, &ScanError{pos: s.mark, msg: "Invalid string literal"}
+	return token.Token{}, &ScanError{pos: token.Pos(s.mark), msg: "Invalid string literal"}
 }
 
 func (s *Scanner) stringOneline(delim rune) (token.Token, error) {
@@ -231,9 +232,9 @@ func (s *Scanner) stringOneline(delim rune) (token.Token, error) {
 	for !s.AtEnd() {
 		r := s.advance()
 		if r == delim {
-			return token.Token{Typ: token.StrLiteral, Pos: s.mark, End: s.pos, Val: b.String()}, nil
+			return s.tokenVal(token.StrLiteral, b.String())
 		} else if r == '\n' || r == '\r' {
-			return token.Token{}, &ScanError{pos: s.pos, msg: "Unexpected newline in string literal"}
+			return token.Token{}, &ScanError{pos: token.Pos(s.pos), msg: "Unexpected newline in string literal"}
 		} else if r == '\\' {
 			// TODO: this will yield a slightly confusing error message when we're at EOI.
 			r = s.advance()
@@ -251,16 +252,16 @@ func (s *Scanner) stringOneline(delim rune) (token.Token, error) {
 			case '\\':
 				b.WriteRune('\\')
 			default:
-				return token.Token{}, &ScanError{pos: s.pos, msg: fmt.Sprintf("Invalid escape character '%c'", r)}
+				return token.Token{}, &ScanError{pos: token.Pos(s.pos), msg: fmt.Sprintf("Invalid escape character '%c'", r)}
 			}
 		} else {
 			b.WriteRune(r)
 		}
 
 	}
-	return token.Token{}, &ScanError{pos: s.pos, msg: "End of input while scanning string literal"}
+	return token.Token{}, &ScanError{pos: token.Pos(s.pos), msg: "End of input while scanning string literal"}
 }
 
 func (s *Scanner) stringMultiline(delim rune) (token.Token, error) {
-	return token.Token{}, &ScanError{pos: s.mark, msg: "Multiline strings are not implemented yet"}
+	return token.Token{}, &ScanError{pos: token.Pos(s.mark), msg: "Multiline strings are not implemented yet"}
 }

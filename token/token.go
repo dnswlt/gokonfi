@@ -51,7 +51,9 @@ const (
 
 type Token struct {
 	Typ TokenType
-	Pos int
-	End int
+	Pos Pos
+	End Pos
 	Val string
 }
+
+type Pos int

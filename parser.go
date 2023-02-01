@@ -22,8 +22,8 @@ func (e *ParseError) Error() string {
 }
 
 type Node interface {
-	Pos() int
-	End() int
+	Pos() token.Pos
+	End() token.Pos
 }
 
 type Expr interface {
@@ -33,64 +33,83 @@ type Expr interface {
 
 type BinaryExpr struct {
 	X     Expr
-	OpPos int
+	OpPos token.Pos
 	Op    token.TokenType
 	Y     Expr
 }
 
 type UnaryExpr struct {
 	X     Expr
-	OpPos int
+	OpPos token.Pos
 	Op    token.TokenType
+}
+
+type RecField struct {
+	Name    string
+	NamePos token.Pos
+	Val     Expr
+}
+
+type LetVar struct {
+	Name    string
+	NamePos token.Pos
+	Val     Expr
+}
+
+type RecExpr struct {
+	LetVars map[string]LetVar
+	Fields  map[string]RecField
+	RecPos  token.Pos
+	RecEnd  token.Pos
 }
 
 type IntLiteral struct {
 	Val    int64
-	ValPos int
-	ValEnd int
+	ValPos token.Pos
+	ValEnd token.Pos
 }
 
 type BoolLiteral struct {
 	Val    bool
-	ValPos int
-	ValEnd int
+	ValPos token.Pos
+	ValEnd token.Pos
 }
 
-func (e *BinaryExpr) Pos() int {
+func (e *BinaryExpr) Pos() token.Pos {
 	return e.X.Pos()
 }
 
-func (e *BinaryExpr) End() int {
+func (e *BinaryExpr) End() token.Pos {
 	return e.Y.End()
 }
 
 func (e *BinaryExpr) exprNode() {}
 
-func (e *UnaryExpr) Pos() int {
+func (e *UnaryExpr) Pos() token.Pos {
 	return e.OpPos
 }
 
-func (e *UnaryExpr) End() int {
+func (e *UnaryExpr) End() token.Pos {
 	return e.X.End()
 }
 
 func (e *UnaryExpr) exprNode() {}
 
-func (e *IntLiteral) Pos() int {
+func (e *IntLiteral) Pos() token.Pos {
 	return e.ValPos
 }
 
-func (e *IntLiteral) End() int {
+func (e *IntLiteral) End() token.Pos {
 	return e.ValEnd
 }
 
 func (e *IntLiteral) exprNode() {}
 
-func (e *BoolLiteral) Pos() int {
+func (e *BoolLiteral) Pos() token.Pos {
 	return e.ValPos
 }
 
-func (e *BoolLiteral) End() int {
+func (e *BoolLiteral) End() token.Pos {
 	return e.ValEnd
 }
 
