@@ -50,6 +50,9 @@ func TestParseTopLevelExpr(t *testing.T) {
 		{name: "str", input: "\"foo\"", want: (*StrLiteral)(nil)},
 		{name: "nil", input: "nil", want: (*NilLiteral)(nil)},
 		{name: "fld", input: "{a: 'foo'}.a", want: (*FieldAcc)(nil)},
+		{name: "call0", input: "f()", want: (*CallExpr)(nil)},
+		{name: "call1", input: "f(1)", want: (*CallExpr)(nil)},
+		{name: "call2", input: "f(1, 2)", want: (*CallExpr)(nil)},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

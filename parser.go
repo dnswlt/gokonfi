@@ -48,6 +48,12 @@ type UnaryExpr struct {
 	Op    token.TokenType
 }
 
+type CallExpr struct {
+	Func    Expr
+	Args    []Expr
+	ArgsEnd token.Pos
+}
+
 type VarExpr struct {
 	Name    string
 	NamePos token.Pos
@@ -189,6 +195,14 @@ func (e *RecExpr) End() token.Pos {
 	return e.RecPos
 }
 func (e *RecExpr) exprNode() {}
+
+func (e *CallExpr) Pos() token.Pos {
+	return e.Func.Pos()
+}
+func (e *CallExpr) End() token.Pos {
+	return e.ArgsEnd
+}
+func (e *CallExpr) exprNode() {}
 
 // Parser methods.
 
@@ -343,11 +357,38 @@ Loop:
 			}
 			ident := p.previous()
 			e = &FieldAcc{X: e, Name: ident.Val, NameEnd: ident.End}
+		case p.match(token.LeftParen):
+			args, err := p.exprList(token.Comma, token.RightParen)
+			if err != nil {
+				return nil, err
+			}
+			e = &CallExpr{Func: e, Args: args, ArgsEnd: p.previous().End}
 		default:
 			break Loop
 		}
 	}
 	return e, nil
+}
+
+func (p *Parser) exprList(sep token.TokenType, close token.TokenType) ([]Expr, error) {
+	args := []Expr{}
+	if p.match(close) {
+		return args, nil
+	}
+	for !p.AtEnd() {
+		e, err := p.Expression()
+		if err != nil {
+			return nil, err
+		}
+		if p.match(close) {
+			return args, nil
+		}
+		if !p.match(sep) {
+			return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("Expected comma, got %s", p.peek().Typ)}
+		}
+		args = append(args, e)
+	}
+	return nil, &ParseError{tok: p.previous(), msg: "Reached end of input while parsing expression list"}
 }
 
 func (p *Parser) operand() (Expr, error) {

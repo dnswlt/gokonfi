@@ -7,7 +7,7 @@ import (
 )
 
 type Val interface {
-	Bool() bool
+	Bool() bool // TODO: make this a regular function
 	valImpl()
 }
 
