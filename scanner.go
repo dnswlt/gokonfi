@@ -153,6 +153,23 @@ func (s *Scanner) NextToken() (token.Token, error) {
 				return s.token(token.GreaterEq)
 			}
 			return s.token(token.GreaterThan)
+		case '=':
+			if s.match('=') {
+				return s.token(token.Equal)
+			}
+		case '!':
+			if s.match('=') {
+				return s.token(token.NotEqual)
+			}
+			return s.token(token.Not)
+		case '&':
+			if s.match('&') {
+				return s.token(token.LogicalAnd)
+			}
+		case '|':
+			if s.match('|') {
+				return s.token(token.LogicalOr)
+			}
 		case '"', '\'':
 			return s.stringLit(r)
 		case ' ', '\t', '\n', '\r':

@@ -12,6 +12,10 @@ type Parser struct {
 	current int
 }
 
+func NewParser(tokens []token.Token) Parser {
+	return Parser{tokens: tokens, current: 0}
+}
+
 type ParseError struct {
 	tok token.Token
 	msg string
@@ -75,22 +79,33 @@ type RecExpr struct {
 	RecEnd  token.Pos
 }
 
-type IntLiteral struct {
-	Val    int64
+type LiteralPos struct {
 	ValPos token.Pos
 	ValEnd token.Pos
+}
+
+type IntLiteral struct {
+	Val int64
+	LiteralPos
+}
+
+type DoubleLiteral struct {
+	Val float64
+	LiteralPos
 }
 
 type BoolLiteral struct {
-	Val    bool
-	ValPos token.Pos
-	ValEnd token.Pos
+	Val bool
+	LiteralPos
 }
 
 type StrLiteral struct {
-	Val    string
-	ValPos token.Pos
-	ValEnd token.Pos
+	Val string
+	LiteralPos
+}
+
+type NilLiteral struct {
+	LiteralPos
 }
 
 // Implementations of Expr.
@@ -98,86 +113,82 @@ type StrLiteral struct {
 func (e *BinaryExpr) Pos() token.Pos {
 	return e.X.Pos()
 }
-
 func (e *BinaryExpr) End() token.Pos {
 	return e.Y.End()
 }
-
 func (e *BinaryExpr) exprNode() {}
 
 func (e *UnaryExpr) Pos() token.Pos {
 	return e.OpPos
 }
-
 func (e *UnaryExpr) End() token.Pos {
 	return e.X.End()
 }
-
 func (e *UnaryExpr) exprNode() {}
 
 func (e *FieldAcc) Pos() token.Pos {
 	return e.X.Pos()
 }
-
 func (e *FieldAcc) End() token.Pos {
 	return e.NameEnd
 }
-
 func (e *FieldAcc) exprNode() {}
 
 func (e *IntLiteral) Pos() token.Pos {
 	return e.ValPos
 }
-
 func (e *IntLiteral) End() token.Pos {
 	return e.ValEnd
 }
-
 func (e *IntLiteral) exprNode() {}
+
+func (e *DoubleLiteral) Pos() token.Pos {
+	return e.ValPos
+}
+func (e *DoubleLiteral) End() token.Pos {
+	return e.ValEnd
+}
+func (e *DoubleLiteral) exprNode() {}
 
 func (e *BoolLiteral) Pos() token.Pos {
 	return e.ValPos
 }
-
 func (e *BoolLiteral) End() token.Pos {
 	return e.ValEnd
 }
-
 func (e *BoolLiteral) exprNode() {}
 
 func (e *StrLiteral) Pos() token.Pos {
 	return e.ValPos
 }
-
 func (e *StrLiteral) End() token.Pos {
 	return e.ValEnd
 }
-
 func (e *StrLiteral) exprNode() {}
+
+func (e *NilLiteral) Pos() token.Pos {
+	return e.ValPos
+}
+func (e *NilLiteral) End() token.Pos {
+	return e.ValEnd
+}
+func (e *NilLiteral) exprNode() {}
 
 func (e *VarExpr) Pos() token.Pos {
 	return e.NamePos
 }
-
 func (e *VarExpr) End() token.Pos {
 	return e.NameEnd
 }
-
 func (e *VarExpr) exprNode() {}
 
 func (e *RecExpr) Pos() token.Pos {
 	return e.RecPos
 }
-
 func (e *RecExpr) End() token.Pos {
 	return e.RecPos
 }
-
 func (e *RecExpr) exprNode() {}
-
-func NewParser(tokens []token.Token) Parser {
-	return Parser{tokens: tokens, current: 0}
-}
 
 // Parser methods.
 
@@ -211,28 +222,7 @@ func (p *Parser) AtEnd() bool {
 	return p.current >= len(p.tokens)-1
 }
 
-/*
-
-Precedence    Operator
-    5             *  /  %  <<  >>  &  &^
-    4             +  -  |  ^
-    3             ==  !=  <  <=  >  >=
-    2             &&
-    1             ||
-
-expression     -> logical_or ;
-logical_or     -> logical_and ( "||" logical_and )* ;
-logical_and    -> comparison ( "&&" comparison )* ;
-comparison     -> term ( ( "!=" | "==" | ">" | ">=" | "<" | "<=" ) term )* ;
-term           -> factor ( ( "-" | "+" | "|" | "^" ) factor )* ;
-factor         -> unary ( ( "/" | "*" | "%" | "<<" | ">>" | "&" ) unary )* ;
-unary          -> ( "!" | "-" ) unary
-               | primary ;
-primary        -> NUMBER | STRING | "true" | "false" | "nil"
-               | "(" expression ")" ;
-			   | "{" rec_expr "}" ;
-*/
-
+// Parses an expression.
 func (p *Parser) Expression() (Expr, error) {
 	return p.logicalOr()
 }
@@ -377,21 +367,32 @@ func (p *Parser) operand() (Expr, error) {
 		if t.Val == "false" {
 			b = false
 		}
-		return &BoolLiteral{Val: b, ValPos: t.Pos, ValEnd: t.End}, nil
-	case p.match(token.StrLiteral):
-		t := p.previous()
-		return &StrLiteral{Val: t.Val, ValPos: t.Pos, ValEnd: t.End}, nil
-	case p.match(token.Ident):
-		t := p.previous()
-		return &VarExpr{Name: t.Val, NamePos: t.Pos, NameEnd: t.End}, nil
+		return &BoolLiteral{Val: b, LiteralPos: LiteralPos{t.Pos, t.End}}, nil
 	case p.match(token.IntLiteral):
 		t := p.previous()
 		x, err := strconv.ParseInt(t.Val, 10, 64)
 		if err != nil {
 			return nil, err
 		}
-		return &IntLiteral{Val: x, ValPos: t.Pos, ValEnd: t.End}, nil
+		return &IntLiteral{Val: x, LiteralPos: LiteralPos{t.Pos, t.End}}, nil
+	case p.match(token.DoubleLiteral):
+		t := p.previous()
+		x, err := strconv.ParseFloat(t.Val, 64)
+		if err != nil {
+			return nil, err
+		}
+		return &DoubleLiteral{Val: x, LiteralPos: LiteralPos{t.Pos, t.End}}, nil
+	case p.match(token.StrLiteral):
+		t := p.previous()
+		return &StrLiteral{Val: t.Val, LiteralPos: LiteralPos{t.Pos, t.End}}, nil
+	case p.match(token.NilLiteral):
+		t := p.previous()
+		return &NilLiteral{LiteralPos: LiteralPos{t.Pos, t.End}}, nil
+	case p.match(token.Ident):
+		t := p.previous()
+		return &VarExpr{Name: t.Val, NamePos: t.Pos, NameEnd: t.End}, nil
 	case p.peek().Typ == token.LeftBrace:
+		// Record
 		r, err := p.record()
 		if err != nil {
 			return nil, err

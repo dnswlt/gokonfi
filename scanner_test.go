@@ -34,6 +34,43 @@ func TestScanSymbols(t *testing.T) {
 	compareTokenTypes(t, tokenTypes, expected)
 }
 
+func TestScanOperators(t *testing.T) {
+	tests := []struct {
+		op   string
+		want token.TokenType
+	}{
+		{op: "+", want: token.Plus},
+		{op: "-", want: token.Minus},
+		{op: "*", want: token.Times},
+		{op: "/", want: token.Div},
+		{op: ".", want: token.Dot},
+		{op: "!", want: token.Not},
+		{op: ":", want: token.Colon},
+		{op: "(", want: token.LeftParen},
+		{op: ")", want: token.RightParen},
+		{op: "{", want: token.LeftBrace},
+		{op: "}", want: token.RightBrace},
+		{op: "==", want: token.Equal},
+		{op: "!=", want: token.NotEqual},
+		{op: "<", want: token.LessThan},
+		{op: "<=", want: token.LessEq},
+		{op: ">", want: token.GreaterThan},
+		{op: ">=", want: token.GreaterEq},
+		{op: "&&", want: token.LogicalAnd},
+		{op: "||", want: token.LogicalOr},
+	}
+	for _, test := range tests {
+		s := NewScanner(test.op)
+		got, err := s.NextToken()
+		if err != nil {
+			t.Fatalf("Error scanning symbol: %s", err)
+		}
+		if got.Typ != test.want {
+			t.Errorf("Want token %s, got %s", test.want, got.Typ)
+		}
+	}
+}
+
 func TestScanExpr(t *testing.T) {
 	symbols := "2 * (3 + 4)"
 	s := NewScanner(symbols)
