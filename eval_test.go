@@ -67,3 +67,30 @@ func TestEvalComparisonExpr(t *testing.T) {
 		})
 	}
 }
+
+func TestEvalRecExpr(t *testing.T) {
+	tests := []struct {
+		input string
+		want  Val
+	}{
+		{input: "{x: 1}.x", want: IntVal(1)},
+		{input: "{x: 1 y: {a: 10 b: a}}.y.b", want: IntVal(10)},
+		{input: "{x: 1 y: {a: 10 b: a + x}}.y.b", want: IntVal(11)},
+	}
+	for i, test := range tests {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			e, err := parse(test.input)
+			if err != nil {
+				t.Fatalf("Cannot parse expression: %s", err)
+			}
+			got, err := Eval(e, NewCtx())
+			if err != nil {
+				t.Fatalf("Failed to evaluate: %s", err)
+			}
+			if got != test.want {
+				t.Errorf("Got %v, want %v", got, test.want)
+			}
+
+		})
+	}
+}

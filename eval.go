@@ -2,6 +2,7 @@ package gokonfi
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/dnswlt/gokonfi/token"
 )
@@ -11,15 +12,64 @@ type Val interface {
 	valImpl()
 }
 
+// Marker interface for "lazy" values. Those can be one of
+// - a fully evaluated Val
+// - an Expr that still needs to be evaluated
+type LazyVal interface {
+	lazyImpl()
+}
+
+type LazyExpr struct {
+	E Expr
+}
+type FullyEvaluated struct {
+	V Val
+}
+
+func (l *LazyExpr) lazyImpl()       {}
+func (l *FullyEvaluated) lazyImpl() {}
+
 type Ctx struct {
-	letVars map[string]Val
-	recExpr *RecExpr
-	rec     *RecVal
-	parent  *Ctx
+	env    map[string]LazyVal // let vars and fields of the current record / module.
+	active map[string]bool    // To detect evaluation cycles
+	parent *Ctx
 }
 
 func NewCtx() *Ctx {
-	return &Ctx{letVars: make(map[string]Val), recExpr: nil, rec: nil, parent: nil}
+	return &Ctx{env: make(map[string]LazyVal), active: make(map[string]bool), parent: nil}
+}
+
+func ChildCtx(parent *Ctx) *Ctx {
+	return &Ctx{env: make(map[string]LazyVal), active: make(map[string]bool), parent: parent}
+}
+
+func (ctx *Ctx) Lookup(v string) (LazyVal, *Ctx) {
+	c := ctx
+	for c != nil {
+		if val, ok := c.env[v]; ok {
+			return val, c
+		}
+		c = c.parent
+	}
+	return nil, nil // Not found
+}
+
+func (ctx *Ctx) IsActive(v string) bool {
+	return ctx.active[v]
+}
+
+func (ctx *Ctx) SetActive(v string) {
+	ctx.active[v] = true
+}
+
+func (ctx *Ctx) Store(v string, val Val) {
+	ctx.env[v] = &FullyEvaluated{val}
+	// Once a value was stored, it's no longer actively being computed.
+	delete(ctx.active, v)
+}
+
+func (ctx *Ctx) StoreExpr(v string, expr Expr) {
+	ctx.env[v] = &LazyExpr{E: expr}
 }
 
 type EvalError struct {
@@ -33,6 +83,14 @@ func (e *EvalError) Error() string {
 
 type RecVal struct {
 	Fields map[string]Val
+}
+
+func NewRec() *RecVal {
+	return &RecVal{Fields: make(map[string]Val)}
+}
+
+func (r *RecVal) SetField(field string, val Val) {
+	r.Fields[field] = val
 }
 
 type IntVal int64
@@ -216,7 +274,71 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		}
 		return nil, &EvalError{pos: e.OpPos, msg: fmt.Sprintf("invalid binary operator: %s", e.Op)}
 	case *VarExpr:
-		break
+		lval, vctx := ctx.Lookup(e.Name)
+		if lval == nil {
+			return nil, &EvalError{pos: e.Pos(), msg: fmt.Sprintf("Unbound variable %s", e.Name)}
+		}
+		switch lv := lval.(type) {
+		case *FullyEvaluated:
+			return lv.V, nil
+		case *LazyExpr:
+			if vctx.IsActive(e.Name) {
+				return nil, &EvalError{pos: e.Pos(), msg: "Cyclic variable dependencies detected"}
+			}
+			vctx.SetActive(e.Name)
+			v, err := Eval(lv.E, vctx)
+			if err != nil {
+				return nil, err
+			}
+			vctx.Store(e.Name, v)
+			return v, nil
+		default:
+			log.Fatalf("Unhandled type for LazyVal: %T", lval)
+		}
+	case *RecExpr:
+		rctx := ChildCtx(ctx)
+		// Prepare context by storing lazy expressions of all fields.
+		for _, lv := range e.LetVars {
+			rctx.StoreExpr(lv.Name, lv.Val)
+		}
+		for _, f := range e.Fields {
+			rctx.StoreExpr(f.Name, f.Val)
+		}
+		// Evaluate all fields.
+		for _, lv := range e.LetVars {
+			rctx.SetActive(lv.Name)
+			v, err := Eval(lv.Val, rctx)
+			if err != nil {
+				return nil, err
+			}
+			rctx.Store(lv.Name, v)
+		}
+		rec := NewRec()
+		for _, f := range e.Fields {
+			rctx.SetActive(f.Name)
+			v, err := Eval(f.Val, rctx)
+			if err != nil {
+				return nil, err
+			}
+			rctx.Store(f.Name, v)
+			rec.SetField(f.Name, v)
+		}
+		return rec, nil
+	case *FieldAcc:
+		v, err := Eval(e.X, ctx)
+		if err != nil {
+			return nil, err
+		}
+		switch r := v.(type) {
+		case *RecVal:
+			if v, ok := r.Fields[e.Name]; ok {
+				return v, nil
+			}
+			// TODO: Add DotPos to FieldAcc.
+			return nil, &EvalError{pos: e.End(), msg: fmt.Sprintf("Record has no field '%s'", e.Name)}
+		default:
+			return nil, &EvalError{pos: e.End(), msg: fmt.Sprintf("Cannot access .%s on type %T", e.Name, e)}
+		}
 	}
 	return nil, &EvalError{pos: expr.Pos(), msg: "not implemented"}
 }
