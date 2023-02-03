@@ -133,6 +133,8 @@ func (s *Scanner) NextToken() (token.Token, error) {
 			return s.token(token.Minus)
 		case '*':
 			return s.token(token.Times)
+		case '@':
+			return s.token(token.Merge)
 		case '/':
 			if s.match('/') {
 				s.eatline()

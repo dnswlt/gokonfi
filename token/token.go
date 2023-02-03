@@ -6,51 +6,52 @@ type TokenType int32
 const (
 	Unspecified TokenType = iota
 	// Literals
-	NilLiteral
-	BoolLiteral
-	IntLiteral
-	DoubleLiteral
-	StrLiteral
+	NilLiteral    // nil
+	BoolLiteral   // true false
+	IntLiteral    // 0 1 2
+	DoubleLiteral // 0. 1.2 3e-4
+	StrLiteral    // "foo" 'bar'
 	// Operators
-	Plus
-	Minus
-	Times
-	Div
-	Modulo
-	Equal
-	NotEqual
-	LessThan
-	LessEq
-	GreaterThan
-	GreaterEq
-	LogicalAnd
-	LogicalOr
-	BitwiseOr
-	BitwiseAnd
-	BitwiseXor
-	ShiftLeft
-	ShiftRight
-	Dot
-	Not
-	Complement
+	Plus        // +
+	Minus       // -
+	Times       // *
+	Div         // /
+	Modulo      // %
+	Equal       // ==
+	NotEqual    // !=
+	LessThan    // <
+	LessEq      // <=
+	GreaterThan // >
+	GreaterEq   // >=
+	LogicalAnd  // &&
+	LogicalOr   // ||
+	BitwiseAnd  // &
+	BitwiseOr   // |
+	BitwiseXor  // ^
+	ShiftLeft   // <<
+	ShiftRight  // >>
+	Dot         // .
+	Not         // !
+	Complement  // ~
+	Merge       // @
 	// Separators
-	Comma
-	LeftParen
-	RightParen
-	LeftBrace
-	RightBrace
-	LeftSquare
-	RightSquare
-	Colon
+	Comma       // ,
+	LeftParen   // (
+	RightParen  // )
+	LeftBrace   // {
+	RightBrace  // }
+	LeftSquare  // [
+	RightSquare // ]
+	Colon       // :
 	// Identifiers
 	Ident
 	// Keywords
-	Func
-	Let
-	Template
-	If
-	Then
-	Else
+	Func     // func
+	Let      // let
+	Template // template
+	If       // if
+	Then     // then
+	Else     // else
 	// Don't treat end of input as an error, but use a special token.
 	EndOfInput
 )

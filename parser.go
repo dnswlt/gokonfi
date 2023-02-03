@@ -332,13 +332,13 @@ func (p *Parser) comparison() (Expr, error) {
 	return x, nil
 }
 
-// term           -> factor ( ( "-" | "+" | "|" | "^" ) factor )* ;
+// term           -> factor ( ( "-" | "+" | "|" | "^" | "@" ) factor )* ;
 func (p *Parser) term() (Expr, error) {
 	x, err := p.factor()
 	if err != nil {
 		return nil, err
 	}
-	for p.match(token.Minus, token.Plus, token.BitwiseOr, token.BitwiseXor) {
+	for p.match(token.Minus, token.Plus, token.BitwiseOr, token.BitwiseXor, token.Merge) {
 		t := p.previous()
 		y, err := p.factor()
 		if err != nil {

@@ -27,35 +27,36 @@ func _() {
 	_ = x[GreaterEq-16]
 	_ = x[LogicalAnd-17]
 	_ = x[LogicalOr-18]
-	_ = x[BitwiseOr-19]
-	_ = x[BitwiseAnd-20]
+	_ = x[BitwiseAnd-19]
+	_ = x[BitwiseOr-20]
 	_ = x[BitwiseXor-21]
 	_ = x[ShiftLeft-22]
 	_ = x[ShiftRight-23]
 	_ = x[Dot-24]
 	_ = x[Not-25]
 	_ = x[Complement-26]
-	_ = x[Comma-27]
-	_ = x[LeftParen-28]
-	_ = x[RightParen-29]
-	_ = x[LeftBrace-30]
-	_ = x[RightBrace-31]
-	_ = x[LeftSquare-32]
-	_ = x[RightSquare-33]
-	_ = x[Colon-34]
-	_ = x[Ident-35]
-	_ = x[Func-36]
-	_ = x[Let-37]
-	_ = x[Template-38]
-	_ = x[If-39]
-	_ = x[Then-40]
-	_ = x[Else-41]
-	_ = x[EndOfInput-42]
+	_ = x[Merge-27]
+	_ = x[Comma-28]
+	_ = x[LeftParen-29]
+	_ = x[RightParen-30]
+	_ = x[LeftBrace-31]
+	_ = x[RightBrace-32]
+	_ = x[LeftSquare-33]
+	_ = x[RightSquare-34]
+	_ = x[Colon-35]
+	_ = x[Ident-36]
+	_ = x[Func-37]
+	_ = x[Let-38]
+	_ = x[Template-39]
+	_ = x[If-40]
+	_ = x[Then-41]
+	_ = x[Else-42]
+	_ = x[EndOfInput-43]
 }
 
-const _TokenType_name = "UnspecifiedNilLiteralBoolLiteralIntLiteralDoubleLiteralStrLiteralPlusMinusTimesDivModuloEqualNotEqualLessThanLessEqGreaterThanGreaterEqLogicalAndLogicalOrBitwiseOrBitwiseAndBitwiseXorShiftLeftShiftRightDotNotComplementCommaLeftParenRightParenLeftBraceRightBraceLeftSquareRightSquareColonIdentFuncLetTemplateIfThenElseEndOfInput"
+const _TokenType_name = "UnspecifiedNilLiteralBoolLiteralIntLiteralDoubleLiteralStrLiteralPlusMinusTimesDivModuloEqualNotEqualLessThanLessEqGreaterThanGreaterEqLogicalAndLogicalOrBitwiseAndBitwiseOrBitwiseXorShiftLeftShiftRightDotNotComplementMergeCommaLeftParenRightParenLeftBraceRightBraceLeftSquareRightSquareColonIdentFuncLetTemplateIfThenElseEndOfInput"
 
-var _TokenType_index = [...]uint16{0, 11, 21, 32, 42, 55, 65, 69, 74, 79, 82, 88, 93, 101, 109, 115, 126, 135, 145, 154, 163, 173, 183, 192, 202, 205, 208, 218, 223, 232, 242, 251, 261, 271, 282, 287, 292, 296, 299, 307, 309, 313, 317, 327}
+var _TokenType_index = [...]uint16{0, 11, 21, 32, 42, 55, 65, 69, 74, 79, 82, 88, 93, 101, 109, 115, 126, 135, 145, 154, 164, 173, 183, 192, 202, 205, 208, 218, 223, 228, 237, 247, 256, 266, 276, 287, 292, 297, 301, 304, 312, 314, 318, 322, 332}
 
 func (i TokenType) String() string {
 	if i < 0 || i >= TokenType(len(_TokenType_index)-1) {

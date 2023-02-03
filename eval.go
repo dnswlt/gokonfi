@@ -427,6 +427,8 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 			return GreaterThan(x, y)
 		case token.GreaterEq:
 			return GreaterEq(x, y)
+		case token.Merge:
+			return MergeRecords(x, y)
 		}
 		return nil, &EvalError{pos: e.OpPos, msg: fmt.Sprintf("invalid binary operator: %s", e.Op)}
 	case *VarExpr:
@@ -535,4 +537,51 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		return Eval(e.Y, ctx)
 	}
 	return nil, &EvalError{pos: expr.Pos(), msg: "not implemented"}
+}
+
+func MergeRecords(x, y Val) (Val, error) {
+	u, ok := x.(*RecVal)
+	if !ok {
+		return nil, fmt.Errorf("cannot merge lhs of type %T", x)
+	}
+	v, ok := y.(*RecVal)
+	if !ok {
+		return nil, fmt.Errorf("cannot merge rhs of type %T", y)
+	}
+	r := NewRec()
+	if err := MergeRecVal(u, v, r); err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+func MergeRecVal(x, y, r *RecVal) error {
+	// Copy fields only in x.
+	for f, v := range x.Fields {
+		if _, ok := y.Fields[f]; !ok {
+			r.SetField(f, v)
+		}
+	}
+	// Copy fields only in y and merge common fields.
+	for f, v := range y.Fields {
+		if _, ok := x.Fields[f]; !ok {
+			// Unique field of y.
+			r.SetField(f, v)
+		} else {
+			// Common field.
+			if cy, ok := v.(*RecVal); !ok {
+				// y field is not a record, just take the value from y.
+				r.SetField(f, v)
+			} else if cx, ok := x.Fields[f].(*RecVal); ok {
+				// x's field is a record, too: recurse.
+				cr := NewRec()
+				r.SetField(f, cr)
+				MergeRecVal(cx, cy, cr)
+			} else {
+				// x field is not a record, again just take the value from y.
+				r.SetField(f, v)
+			}
+		}
+	}
+	return nil
 }

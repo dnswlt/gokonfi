@@ -66,6 +66,7 @@ func TestParseTopLevelExpr(t *testing.T) {
 		{name: "func", input: "func (x) {x}", want: (*FuncExpr)(nil)},
 		{name: "func", input: "func () {42}", want: (*FuncExpr)(nil)},
 		{name: "cond", input: "if 1 == 2 then 'foo' else 'bar'", want: (*ConditionalExpr)(nil)},
+		{name: "merge", input: "{x: 1} @ {y: 2}", want: (*BinaryExpr)(nil)},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

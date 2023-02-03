@@ -102,6 +102,18 @@ func TestEvalRecExpr(t *testing.T) {
 		{input: "{x: 1}.x", want: IntVal(1)},
 		{input: "{x: 1 y: {a: 10 b: a}}.y.b", want: IntVal(10)},
 		{input: "{x: 1 y: {a: 10 b: a + x}}.y.b", want: IntVal(11)},
+		{input: "len({x: 1} @ {y: 2})", want: IntVal(2)},
+		{input: "({y: 1} @ {y: 2}).y", want: IntVal(2)},
+		// Right overwrites left:
+		{input: "({y: {z: 1}} @ {y: {z: 2}}).y.z", want: IntVal(2)},
+		// Right overwrites left, different scalar types:
+		{input: "({y: {z: 1}} @ {y: {z: 'a'}}).y.z", want: StringVal("a")},
+		// Record overwrites number:
+		{input: "({y: 1} @ {y: {z: 2}}).y.z", want: IntVal(2)},
+		// Number overwrites record:
+		{input: "({y: {z: 1}} @ {y: 2}).y", want: IntVal(2)},
+		// Take left if right doesn't have the field:
+		{input: "({y: {z: 1 w: 2}} @ {y: {z: 0}}).y.w", want: IntVal(2)},
 	}
 	for i, test := range tests {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
@@ -109,7 +121,7 @@ func TestEvalRecExpr(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Cannot parse expression: %s", err)
 			}
-			got, err := Eval(e, NewCtx())
+			got, err := Eval(e, GlobalCtx())
 			if err != nil {
 				t.Fatalf("Failed to evaluate: %s", err)
 			}
@@ -225,7 +237,6 @@ func TestEvalFunc(t *testing.T) {
 			if got != test.want {
 				t.Errorf("Got %v, want %v", got, test.want)
 			}
-
 		})
 	}
 }

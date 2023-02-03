@@ -102,7 +102,7 @@ func TestScanSkipsWhitespace(t *testing.T) {
 }
 
 func TestScanUnknown(t *testing.T) {
-	s := NewScanner("3 @")
+	s := NewScanner("3 $")
 	s.NextToken()
 	_, err := s.NextToken()
 	if err == nil {
