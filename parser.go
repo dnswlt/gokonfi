@@ -424,8 +424,8 @@ func (p *Parser) exprList(sep token.TokenType, close token.TokenType) ([]Expr, e
 		if p.match(close) {
 			return args, nil
 		}
-		if !p.match(sep) {
-			return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("Expected comma, got %s", p.peek().Typ)}
+		if err = p.expect(sep, "expression list"); err != nil {
+			return nil, err
 		}
 	}
 	return nil, &ParseError{tok: p.previous(), msg: "Reached end of input while parsing expression list"}
@@ -433,20 +433,25 @@ func (p *Parser) exprList(sep token.TokenType, close token.TokenType) ([]Expr, e
 
 func (p *Parser) identList(sep token.TokenType, close token.TokenType) ([]*VarExpr, error) {
 	idents := []*VarExpr{}
+	seen := make(map[string]bool)
 	if p.match(close) {
 		return idents, nil
 	}
 	for !p.AtEnd() {
-		if !p.match(token.Ident) {
-			return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("Expected identifier, got %s", p.peek().Typ)}
+		if err := p.expect(token.Ident, "identifier list"); err != nil {
+			return nil, err
 		}
 		t := p.previous()
+		if seen[t.Val] {
+			return nil, &ParseError{tok: t, msg: fmt.Sprintf("Duplicate identifier in identifier list: %s", t.Val)}
+		}
+		seen[t.Val] = true
 		idents = append(idents, &VarExpr{Name: t.Val, NamePos: t.Pos, NameEnd: t.End})
 		if p.match(close) {
 			return idents, nil
 		}
-		if !p.match(sep) {
-			return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("Expected comma, got %s", p.peek().Typ)}
+		if err := p.expect(sep, "identifier list"); err != nil {
+			return nil, err
 		}
 	}
 	return nil, &ParseError{tok: p.previous(), msg: "Reached end of input while parsing identifier list"}
@@ -459,8 +464,8 @@ func (p *Parser) operand() (Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		if !p.match(token.RightParen) {
-			return nil, &ParseError{tok: p.previous(), msg: fmt.Sprintf("Expected ')', got %s", p.previous().Val)}
+		if err = p.expect(token.RightParen, "operand"); err != nil {
+			return nil, err
 		}
 		return e, nil
 	case p.match(token.BoolLiteral):
@@ -502,29 +507,29 @@ func (p *Parser) operand() (Expr, error) {
 		return r, nil
 	case p.match(token.Func):
 		funcPos := p.previous().Pos
-		if !p.match(token.LeftParen) {
-			return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("Expected '(', got %s in func expression", p.peek().Typ)}
+		if err := p.expect(token.LeftParen, "func"); err != nil {
+			return nil, err
 		}
 		params, err := p.identList(token.Comma, token.RightParen)
 		if err != nil {
 			return nil, err
 		}
-		if !p.match(token.LeftBrace) {
-			return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("Expected '{', got %s in func expression", p.peek().Typ)}
+		if err = p.expect(token.LeftBrace, "func"); err != nil {
+			return nil, err
 		}
 		body, err := p.Expression()
 		if err != nil {
 			return nil, err
 		}
-		if !p.match(token.RightBrace) {
-			return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("Expected '}', got %s in func expression", p.peek().Typ)}
+		if err = p.expect(token.RightBrace, "func"); err != nil {
+			return nil, err
 		}
 		return &FuncExpr{Params: params, FuncPos: funcPos, FuncEnd: p.previous().End, Body: body}, nil
 	case p.match(token.Template):
 		// Templates are syntactic sugar for functions.
 		funcPos := p.previous().Pos
-		if !p.match(token.LeftParen) {
-			return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("Expected '(', got %s in template expression", p.peek().Typ)}
+		if err := p.expect(token.LeftParen, "template"); err != nil {
+			return nil, err
 		}
 		params, err := p.identList(token.Comma, token.RightParen)
 		if err != nil {
