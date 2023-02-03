@@ -380,13 +380,13 @@ func (p *Parser) exprList(sep token.TokenType, close token.TokenType) ([]Expr, e
 		if err != nil {
 			return nil, err
 		}
+		args = append(args, e)
 		if p.match(close) {
 			return args, nil
 		}
 		if !p.match(sep) {
 			return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("Expected comma, got %s", p.peek().Typ)}
 		}
-		args = append(args, e)
 	}
 	return nil, &ParseError{tok: p.previous(), msg: "Reached end of input while parsing expression list"}
 }

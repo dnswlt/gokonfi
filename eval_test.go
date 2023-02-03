@@ -94,3 +94,31 @@ func TestEvalRecExpr(t *testing.T) {
 		})
 	}
 }
+
+func TestEvalCallExpr(t *testing.T) {
+	tests := []struct {
+		input string
+		want  Val
+	}{
+		{input: "len('')", want: IntVal(0)},
+		{input: "len('foo' + 'bar')", want: IntVal(6)},
+		{input: "len({a: 1 b: 2})", want: IntVal(2)},
+		{input: "len({})", want: IntVal(0)},
+	}
+	for i, test := range tests {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			e, err := parse(test.input)
+			if err != nil {
+				t.Fatalf("Cannot parse expression: %s", err)
+			}
+			got, err := Eval(e, GlobalCtx())
+			if err != nil {
+				t.Fatalf("Failed to evaluate: %s", err)
+			}
+			if got != test.want {
+				t.Errorf("Got %v, want %v", got, test.want)
+			}
+
+		})
+	}
+}

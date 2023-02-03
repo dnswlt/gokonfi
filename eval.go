@@ -12,16 +12,20 @@ type Val interface {
 	valImpl()
 }
 
-// Marker interface for "lazy" values. Those can be one of
+// Marker interface for "lazy" values, which are used during evaluation.
+// They can be one of
 // - a fully evaluated Val
 // - an Expr that still needs to be evaluated
 type LazyVal interface {
 	lazyImpl()
 }
 
+// An unevaluated expression used as a LazyVal.
 type LazyExpr struct {
 	E Expr
 }
+
+// A fully evaluated Val used as a LazyVal.
 type FullyEvaluated struct {
 	V Val
 }
@@ -29,10 +33,12 @@ type FullyEvaluated struct {
 func (l *LazyExpr) lazyImpl()       {}
 func (l *FullyEvaluated) lazyImpl() {}
 
+// Ctx is a chained evaluation context containing lazy evaluated values for
+// all variables that are in scope.
 type Ctx struct {
 	env    map[string]LazyVal // let vars and fields of the current record / module.
 	active map[string]bool    // To detect evaluation cycles
-	parent *Ctx
+	parent *Ctx               // Parent context (e.g. of the parent record).
 }
 
 func NewCtx() *Ctx {
@@ -41,6 +47,30 @@ func NewCtx() *Ctx {
 
 func ChildCtx(parent *Ctx) *Ctx {
 	return &Ctx{env: make(map[string]LazyVal), active: make(map[string]bool), parent: parent}
+}
+
+func GlobalCtx() *Ctx {
+	ctx := NewCtx()
+	// Built-in functions.
+	builtins := []*NativeFuncVal{
+		{
+			Name:  "len",
+			Arity: 1,
+			F: func(args []Val) (Val, error) {
+				switch arg := args[0].(type) {
+				case StringVal:
+					return IntVal(len(arg)), nil
+				case *RecVal:
+					return IntVal(len(arg.Fields)), nil
+				}
+				return nil, fmt.Errorf("invalid type for len: %T", args[0])
+			},
+		},
+	}
+	for _, builtin := range builtins {
+		ctx.Store(builtin.Name, builtin)
+	}
+	return ctx
 }
 
 func (ctx *Ctx) Lookup(v string) (LazyVal, *Ctx) {
@@ -98,18 +128,37 @@ type DoubleVal float64
 type BoolVal bool
 type StringVal string
 type NilVal struct{}
+type CallableVal interface {
+	Call(args []Val, ctx *Ctx) (Val, error)
+}
+type NativeFuncVal struct {
+	F     func([]Val) (Val, error)
+	Name  string
+	Arity int
+}
 
-func (v IntVal) valImpl()    {}
-func (v DoubleVal) valImpl() {}
-func (v BoolVal) valImpl()   {}
-func (v StringVal) valImpl() {}
-func (v NilVal) valImpl()    {}
-func (v *RecVal) valImpl()   {}
+func (f *NativeFuncVal) Call(args []Val, ctx *Ctx) (Val, error) {
+	if len(args) != f.Arity {
+		return nil, fmt.Errorf("wrong number of arguments for %s: got %d want %d", f.Name, len(args), f.Arity)
+	}
+	return f.F(args)
+}
+
+func (f *NativeFuncVal) String() string {
+	return fmt.Sprintf("<built-in %s>", f.Name)
+}
+
+func (v IntVal) valImpl()        {}
+func (v DoubleVal) valImpl()     {}
+func (v BoolVal) valImpl()       {}
+func (v StringVal) valImpl()     {}
+func (v NilVal) valImpl()        {}
+func (v *RecVal) valImpl()       {}
+func (v NativeFuncVal) valImpl() {}
 
 func (x IntVal) Bool() bool {
 	return x != 0
 }
-
 func (v DoubleVal) Bool() bool {
 	return v != 0
 }
@@ -124,6 +173,9 @@ func (s NilVal) Bool() bool {
 }
 func (r *RecVal) Bool() bool {
 	return len(r.Fields) > 0
+}
+func (r *NativeFuncVal) Bool() bool {
+	return true
 }
 
 // Binary operations on Val.
@@ -339,6 +391,32 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		default:
 			return nil, &EvalError{pos: e.End(), msg: fmt.Sprintf("Cannot access .%s on type %T", e.Name, e)}
 		}
+	case *CallExpr:
+		fe, err := Eval(e.Func, ctx)
+		if err != nil {
+			return nil, err
+		}
+		f, ok := fe.(CallableVal)
+		if !ok {
+			return nil, &EvalError{pos: e.Func.Pos(), msg: fmt.Sprintf("Type %T is not callable", fe)}
+		}
+		args := make([]Val, len(e.Args))
+		for i, arg := range e.Args {
+			val, err := Eval(arg, ctx)
+			if err != nil {
+				return nil, err
+			}
+			args[i] = val
+		}
+		res, err := f.Call(args, ctx)
+		if err == nil {
+			return res, nil
+		}
+		// Propagate EvalErrors, wrap all others to retain the source location.
+		if _, ok := err.(*EvalError); ok {
+			return nil, err
+		}
+		return nil, &EvalError{pos: e.Func.Pos(), msg: err.Error()}
 	}
 	return nil, &EvalError{pos: expr.Pos(), msg: "not implemented"}
 }
