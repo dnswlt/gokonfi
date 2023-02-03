@@ -3,6 +3,7 @@ package gokonfi
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/dnswlt/gokonfi/token"
 )
@@ -64,6 +65,30 @@ func GlobalCtx() *Ctx {
 					return IntVal(len(arg.Fields)), nil
 				}
 				return nil, fmt.Errorf("invalid type for len: %T", args[0])
+			},
+		},
+		{
+			Name:  "contains",
+			Arity: 2,
+			F: func(args []Val) (Val, error) {
+				switch s := args[0].(type) {
+				case StringVal:
+					if substr, ok := args[1].(StringVal); ok {
+						return BoolVal(strings.Contains(string(s), string(substr))), nil
+					}
+					return nil, fmt.Errorf("invalid type for arg #2 of contains: %T", args[1])
+				}
+				return nil, fmt.Errorf("invalid argument types for contains: (%T, %T)", args[0], args[1])
+			},
+		},
+		{
+			Name:  "cond",
+			Arity: 3,
+			F: func(args []Val) (Val, error) {
+				if args[0].Bool() {
+					return args[1], nil
+				}
+				return args[2], nil
 			},
 		},
 	}
@@ -136,6 +161,9 @@ type NativeFuncVal struct {
 	Name  string
 	Arity int
 }
+type FuncExprVal struct {
+	F *FuncExpr
+}
 
 func (f *NativeFuncVal) Call(args []Val, ctx *Ctx) (Val, error) {
 	if len(args) != f.Arity {
@@ -144,8 +172,24 @@ func (f *NativeFuncVal) Call(args []Val, ctx *Ctx) (Val, error) {
 	return f.F(args)
 }
 
+func (f *FuncExprVal) Call(args []Val, ctx *Ctx) (Val, error) {
+	arity := len(f.F.Params)
+	if len(args) != arity {
+		return nil, fmt.Errorf("wrong number of arguments for %s: got %d want %d", f.String(), len(args), arity)
+	}
+	fctx := ChildCtx(ctx)
+	for i, p := range f.F.Params {
+		fctx.Store(p.Name, args[i])
+	}
+	return Eval(f.F.Body, fctx)
+}
+
 func (f *NativeFuncVal) String() string {
 	return fmt.Sprintf("<built-in %s>", f.Name)
+}
+
+func (f *FuncExprVal) String() string {
+	return fmt.Sprintf("<func @%d:%d>", f.F.Pos(), f.F.End())
 }
 
 func (v IntVal) valImpl()        {}
@@ -155,6 +199,7 @@ func (v StringVal) valImpl()     {}
 func (v NilVal) valImpl()        {}
 func (v *RecVal) valImpl()       {}
 func (v NativeFuncVal) valImpl() {}
+func (v FuncExprVal) valImpl()   {}
 
 func (x IntVal) Bool() bool {
 	return x != 0
@@ -175,6 +220,9 @@ func (r *RecVal) Bool() bool {
 	return len(r.Fields) > 0
 }
 func (r *NativeFuncVal) Bool() bool {
+	return true
+}
+func (r *FuncExprVal) Bool() bool {
 	return true
 }
 
@@ -256,6 +304,54 @@ func Equal(x, y Val) (Val, error) {
 func NotEqual(x, y Val) (Val, error) {
 	return BoolVal(x != y), nil
 }
+func LessThan(x, y Val) (Val, error) {
+	if u, ok := x.(IntVal); ok {
+		if v, ok := y.(IntVal); ok {
+			return BoolVal(u < v), nil
+		}
+	} else if u, ok := x.(DoubleVal); ok {
+		if v, ok := y.(DoubleVal); ok {
+			return BoolVal(u < v), nil
+		}
+	}
+	return nil, fmt.Errorf("incompatible types for <: %T and %T", x, y)
+}
+func LessEq(x, y Val) (Val, error) {
+	if u, ok := x.(IntVal); ok {
+		if v, ok := y.(IntVal); ok {
+			return BoolVal(u <= v), nil
+		}
+	} else if u, ok := x.(DoubleVal); ok {
+		if v, ok := y.(DoubleVal); ok {
+			return BoolVal(u <= v), nil
+		}
+	}
+	return nil, fmt.Errorf("incompatible types for <: %T and %T", x, y)
+}
+func GreaterThan(x, y Val) (Val, error) {
+	if u, ok := x.(IntVal); ok {
+		if v, ok := y.(IntVal); ok {
+			return BoolVal(u > v), nil
+		}
+	} else if u, ok := x.(DoubleVal); ok {
+		if v, ok := y.(DoubleVal); ok {
+			return BoolVal(u > v), nil
+		}
+	}
+	return nil, fmt.Errorf("incompatible types for <: %T and %T", x, y)
+}
+func GreaterEq(x, y Val) (Val, error) {
+	if u, ok := x.(IntVal); ok {
+		if v, ok := y.(IntVal); ok {
+			return BoolVal(u >= v), nil
+		}
+	} else if u, ok := x.(DoubleVal); ok {
+		if v, ok := y.(DoubleVal); ok {
+			return BoolVal(u >= v), nil
+		}
+	}
+	return nil, fmt.Errorf("incompatible types for <: %T and %T", x, y)
+}
 
 // Unary operations on Val.
 func UnaryMinus(x Val) (Val, error) {
@@ -266,6 +362,10 @@ func UnaryMinus(x Val) (Val, error) {
 		return -u, nil
 	}
 	return nil, fmt.Errorf("incompatible type for unary -: %T", x)
+}
+
+func UnaryNot(x Val) (Val, error) {
+	return BoolVal(!x.Bool()), nil
 }
 
 func Eval(expr Expr, ctx *Ctx) (Val, error) {
@@ -288,6 +388,8 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		switch e.Op {
 		case token.Minus:
 			return UnaryMinus(x)
+		case token.Not:
+			return UnaryNot(x)
 		}
 	case *BinaryExpr:
 		x, err := Eval(e.X, ctx)
@@ -317,12 +419,14 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 			return Equal(x, y)
 		case token.NotEqual:
 			return NotEqual(x, y)
-			/*
-				LessThan
-				LessEq
-				GreaterThan
-				GreaterEq
-			*/
+		case token.LessThan:
+			return LessThan(x, y)
+		case token.LessEq:
+			return LessEq(x, y)
+		case token.GreaterThan:
+			return GreaterThan(x, y)
+		case token.GreaterEq:
+			return GreaterEq(x, y)
 		}
 		return nil, &EvalError{pos: e.OpPos, msg: fmt.Sprintf("invalid binary operator: %s", e.Op)}
 	case *VarExpr:
@@ -417,6 +521,18 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 			return nil, err
 		}
 		return nil, &EvalError{pos: e.Func.Pos(), msg: err.Error()}
+	case *FuncExpr:
+		return &FuncExprVal{F: e}, nil
+	case *ConditionalExpr:
+		cond, err := Eval(e.Cond, ctx)
+		if err != nil {
+			return nil, err
+		}
+		// Only evaluate one of the two branches.
+		if cond.Bool() {
+			return Eval(e.X, ctx)
+		}
+		return Eval(e.Y, ctx)
 	}
 	return nil, &EvalError{pos: expr.Pos(), msg: "not implemented"}
 }

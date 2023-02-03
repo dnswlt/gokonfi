@@ -46,12 +46,16 @@ func _() {
 	_ = x[Ident-35]
 	_ = x[Func-36]
 	_ = x[Let-37]
-	_ = x[EndOfInput-38]
+	_ = x[Template-38]
+	_ = x[If-39]
+	_ = x[Then-40]
+	_ = x[Else-41]
+	_ = x[EndOfInput-42]
 }
 
-const _TokenType_name = "UnspecifiedNilLiteralBoolLiteralIntLiteralDoubleLiteralStrLiteralPlusMinusTimesDivModuloEqualNotEqualLessThanLessEqGreaterThanGreaterEqLogicalAndLogicalOrBitwiseOrBitwiseAndBitwiseXorShiftLeftShiftRightDotNotComplementCommaLeftParenRightParenLeftBraceRightBraceLeftSquareRightSquareColonIdentFuncLetEndOfInput"
+const _TokenType_name = "UnspecifiedNilLiteralBoolLiteralIntLiteralDoubleLiteralStrLiteralPlusMinusTimesDivModuloEqualNotEqualLessThanLessEqGreaterThanGreaterEqLogicalAndLogicalOrBitwiseOrBitwiseAndBitwiseXorShiftLeftShiftRightDotNotComplementCommaLeftParenRightParenLeftBraceRightBraceLeftSquareRightSquareColonIdentFuncLetTemplateIfThenElseEndOfInput"
 
-var _TokenType_index = [...]uint16{0, 11, 21, 32, 42, 55, 65, 69, 74, 79, 82, 88, 93, 101, 109, 115, 126, 135, 145, 154, 163, 173, 183, 192, 202, 205, 208, 218, 223, 232, 242, 251, 261, 271, 282, 287, 292, 296, 299, 309}
+var _TokenType_index = [...]uint16{0, 11, 21, 32, 42, 55, 65, 69, 74, 79, 82, 88, 93, 101, 109, 115, 126, 135, 145, 154, 163, 173, 183, 192, 202, 205, 208, 218, 223, 232, 242, 251, 261, 271, 282, 287, 292, 296, 299, 307, 309, 313, 317, 327}
 
 func (i TokenType) String() string {
 	if i < 0 || i >= TokenType(len(_TokenType_index)-1) {

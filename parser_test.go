@@ -1,6 +1,7 @@
 package gokonfi
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -31,7 +32,14 @@ func parse(input string) (Expr, error) {
 		return nil, err
 	}
 	p := NewParser(ts)
-	return p.Expression()
+	res, err := p.Expression()
+	if err != nil {
+		return nil, err
+	}
+	if !p.AtEnd() {
+		return nil, fmt.Errorf("did not parse entire input")
+	}
+	return res, nil
 }
 
 func TestParseTopLevelExpr(t *testing.T) {
@@ -43,7 +51,8 @@ func TestParseTopLevelExpr(t *testing.T) {
 		{name: "plus", input: "1 + 3", want: (*BinaryExpr)(nil)},
 		{name: "minus", input: "1 + 3 - 2", want: (*BinaryExpr)(nil)},
 		{name: "eq", input: "1 == 2", want: (*BinaryExpr)(nil)},
-		{name: "unary", input: "-2", want: (*UnaryExpr)(nil)},
+		{name: "unary-", input: "-2", want: (*UnaryExpr)(nil)},
+		{name: "unary!", input: "!2", want: (*UnaryExpr)(nil)},
 		{name: "rec", input: "{x: 1}", want: (*RecExpr)(nil)},
 		{name: "int", input: "1", want: (*IntLiteral)(nil)},
 		{name: "double", input: "1.3e-9", want: (*DoubleLiteral)(nil)},
@@ -53,6 +62,10 @@ func TestParseTopLevelExpr(t *testing.T) {
 		{name: "call0", input: "f()", want: (*CallExpr)(nil)},
 		{name: "call1", input: "f(1)", want: (*CallExpr)(nil)},
 		{name: "call2", input: "f(1, 2)", want: (*CallExpr)(nil)},
+		{name: "func", input: "func (x, y) {x + y}", want: (*FuncExpr)(nil)},
+		{name: "func", input: "func (x) {x}", want: (*FuncExpr)(nil)},
+		{name: "func", input: "func () {42}", want: (*FuncExpr)(nil)},
+		{name: "cond", input: "if 1 == 2 then 'foo' else 'bar'", want: (*ConditionalExpr)(nil)},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

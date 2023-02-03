@@ -29,11 +29,15 @@ type ScanError struct {
 
 var (
 	keywords = map[string]token.TokenType{
-		"func":  token.Func,
-		"let":   token.Let,
-		"true":  token.BoolLiteral,
-		"false": token.BoolLiteral,
-		"nil":   token.NilLiteral,
+		"func":     token.Func,
+		"let":      token.Let,
+		"template": token.Template,
+		"if":       token.If,
+		"then":     token.Then,
+		"else":     token.Else,
+		"true":     token.BoolLiteral,
+		"false":    token.BoolLiteral,
+		"nil":      token.NilLiteral,
 	}
 
 	numberRegexp = regexp.MustCompile(`^(?:\d+[eE][+-]?\d+|\d*\.\d+(?:[eE][+-]?\d+)?|\d+\.\d*(?:[eE][+-]?\d+)?|(\d+))`)

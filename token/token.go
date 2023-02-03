@@ -47,6 +47,10 @@ const (
 	// Keywords
 	Func
 	Let
+	Template
+	If
+	Then
+	Else
 	// Don't treat end of input as an error, but use a special token.
 	EndOfInput
 )

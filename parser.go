@@ -48,6 +48,20 @@ type UnaryExpr struct {
 	Op    token.TokenType
 }
 
+type ConditionalExpr struct {
+	Cond Expr
+	X    Expr
+	Y    Expr
+}
+
+type FuncExpr struct {
+	// func (x, y) { x + y - 1 }
+	Params  []*VarExpr
+	FuncPos token.Pos
+	FuncEnd token.Pos
+	Body    Expr
+}
+
 type CallExpr struct {
 	Func    Expr
 	Args    []Expr
@@ -196,6 +210,14 @@ func (e *RecExpr) End() token.Pos {
 }
 func (e *RecExpr) exprNode() {}
 
+func (e *ConditionalExpr) Pos() token.Pos {
+	return e.Cond.Pos()
+}
+func (e *ConditionalExpr) End() token.Pos {
+	return e.Y.End()
+}
+func (e *ConditionalExpr) exprNode() {}
+
 func (e *CallExpr) Pos() token.Pos {
 	return e.Func.Pos()
 }
@@ -203,6 +225,14 @@ func (e *CallExpr) End() token.Pos {
 	return e.ArgsEnd
 }
 func (e *CallExpr) exprNode() {}
+
+func (e *FuncExpr) Pos() token.Pos {
+	return e.FuncPos
+}
+func (e *FuncExpr) End() token.Pos {
+	return e.FuncEnd
+}
+func (e *FuncExpr) exprNode() {}
 
 // Parser methods.
 
@@ -230,6 +260,16 @@ func (p *Parser) match(tokenTypes ...token.TokenType) bool {
 		}
 	}
 	return false
+}
+
+func (p *Parser) expect(tokenType token.TokenType, context string) error {
+	if !p.match(tokenType) {
+		return &ParseError{
+			tok: p.peek(),
+			msg: fmt.Sprintf("Expected token of type %s, got '%s' (%s) in %s",
+				tokenType, p.peek().Val, p.peek().Typ, context)}
+	}
+	return nil
 }
 
 func (p *Parser) AtEnd() bool {
@@ -391,6 +431,27 @@ func (p *Parser) exprList(sep token.TokenType, close token.TokenType) ([]Expr, e
 	return nil, &ParseError{tok: p.previous(), msg: "Reached end of input while parsing expression list"}
 }
 
+func (p *Parser) identList(sep token.TokenType, close token.TokenType) ([]*VarExpr, error) {
+	idents := []*VarExpr{}
+	if p.match(close) {
+		return idents, nil
+	}
+	for !p.AtEnd() {
+		if !p.match(token.Ident) {
+			return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("Expected identifier, got %s", p.peek().Typ)}
+		}
+		t := p.previous()
+		idents = append(idents, &VarExpr{Name: t.Val, NamePos: t.Pos, NameEnd: t.End})
+		if p.match(close) {
+			return idents, nil
+		}
+		if !p.match(sep) {
+			return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("Expected comma, got %s", p.peek().Typ)}
+		}
+	}
+	return nil, &ParseError{tok: p.previous(), msg: "Reached end of input while parsing identifier list"}
+}
+
 func (p *Parser) operand() (Expr, error) {
 	switch {
 	case p.match(token.LeftParen):
@@ -439,6 +500,61 @@ func (p *Parser) operand() (Expr, error) {
 			return nil, err
 		}
 		return r, nil
+	case p.match(token.Func):
+		funcPos := p.previous().Pos
+		if !p.match(token.LeftParen) {
+			return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("Expected '(', got %s in func expression", p.peek().Typ)}
+		}
+		params, err := p.identList(token.Comma, token.RightParen)
+		if err != nil {
+			return nil, err
+		}
+		if !p.match(token.LeftBrace) {
+			return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("Expected '{', got %s in func expression", p.peek().Typ)}
+		}
+		body, err := p.Expression()
+		if err != nil {
+			return nil, err
+		}
+		if !p.match(token.RightBrace) {
+			return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("Expected '}', got %s in func expression", p.peek().Typ)}
+		}
+		return &FuncExpr{Params: params, FuncPos: funcPos, FuncEnd: p.previous().End, Body: body}, nil
+	case p.match(token.Template):
+		// Templates are syntactic sugar for functions.
+		funcPos := p.previous().Pos
+		if !p.match(token.LeftParen) {
+			return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("Expected '(', got %s in template expression", p.peek().Typ)}
+		}
+		params, err := p.identList(token.Comma, token.RightParen)
+		if err != nil {
+			return nil, err
+		}
+		body, err := p.record()
+		if err != nil {
+			return nil, err
+		}
+		return &FuncExpr{Params: params, FuncPos: funcPos, FuncEnd: p.previous().End, Body: body}, nil
+	case p.match(token.If):
+		cond, err := p.Expression()
+		if err != nil {
+			return nil, err
+		}
+		if err = p.expect(token.Then, "conditional"); err != nil {
+			return nil, err
+		}
+		x, err := p.Expression()
+		if err != nil {
+			return nil, err
+		}
+		if err = p.expect(token.Else, "conditional"); err != nil {
+			return nil, err
+		}
+		y, err := p.Expression()
+		if err != nil {
+			return nil, err
+		}
+		return &ConditionalExpr{cond, x, y}, nil
 	}
 	return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("Unexpected token type %s for primary expression", p.peek().Typ)}
 }
