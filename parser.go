@@ -264,10 +264,10 @@ func (p *Parser) match(tokenTypes ...token.TokenType) bool {
 
 func (p *Parser) expect(tokenType token.TokenType, context string) error {
 	if !p.match(tokenType) {
+		t := p.peek()
 		return &ParseError{
-			tok: p.peek(),
-			msg: fmt.Sprintf("Expected token of type %s, got '%s' (%s) in %s",
-				tokenType, p.peek().Val, p.peek().Typ, context)}
+			tok: t, msg: fmt.Sprintf("Expected token of type %s, got '%s' (%s) in %s",
+				tokenType, t.Val, t.Typ, context)}
 	}
 	return nil
 }
@@ -599,25 +599,75 @@ func (p *Parser) record() (Expr, error) {
 	return nil, &ParseError{tok: p.previous(), msg: "Reached end of input while parsing record"}
 }
 
+// Can be one of
+// "let" <ident> ":" <expr>
+// "let" <ident> "(" <id_list> ")" ":" <expr>
+// "let" "template" <ident> "(" <id_list> ")" <record>
+//
+// Examples:
+// let x: 7
+//
+// let f(x): 17 + x
+// <==>
+// let f: func (x) { 17 + x }
+//
+// let template f(x, y) { x: 7 }
+// <==>
+// let f: template (x, y) { x: 7 }
+// <==>
+// let f: func (x, y) { { x: 7 } }
 func (p *Parser) letVar() (*LetVar, error) {
-	if !p.match(token.Let) {
-		t := p.peek()
-		return nil, &ParseError{tok: t, msg: fmt.Sprintf("Expected 'let' keyword, got %s", t.Typ)}
-	}
-	if !p.match(token.Ident) {
-		t := p.peek()
-		return nil, &ParseError{tok: t, msg: fmt.Sprintf("Expected identifier for record field, got %s", t.Typ)}
-	}
-	v := p.previous()
-	if !p.match(token.Colon) {
-		t := p.peek()
-		return nil, &ParseError{tok: t, msg: fmt.Sprintf("Expected ':' for let binding, got %s", t.Typ)}
-	}
-	expr, err := p.Expression()
-	if err != nil {
+	if err := p.expect(token.Let, "let"); err != nil {
 		return nil, err
 	}
-	return &LetVar{Name: v.Val, NamePos: v.Pos, Val: expr}, nil
+	switch {
+	case p.match(token.Ident):
+		v := p.previous()
+		if p.match(token.LeftParen) {
+			// let function definition
+			params, err := p.identList(token.Comma, token.RightParen)
+			if err != nil {
+				return nil, err
+			}
+			if err = p.expect(token.Colon, "func"); err != nil {
+				return nil, err
+			}
+			body, err := p.Expression()
+			if err != nil {
+				return nil, err
+			}
+			f := &FuncExpr{Params: params, FuncPos: v.Pos, FuncEnd: body.End(), Body: body}
+			return &LetVar{Name: v.Val, NamePos: v.Pos, Val: f}, nil
+		}
+		// Regular variable binding
+		if err := p.expect(token.Colon, "let"); err != nil {
+			return nil, err
+		}
+		expr, err := p.Expression()
+		if err != nil {
+			return nil, err
+		}
+		return &LetVar{Name: v.Val, NamePos: v.Pos, Val: expr}, nil
+	case p.match(token.Template):
+		if err := p.expect(token.Ident, "template"); err != nil {
+			return nil, err
+		}
+		v := p.previous()
+		if err := p.expect(token.LeftParen, "template"); err != nil {
+			return nil, err
+		}
+		params, err := p.identList(token.Comma, token.RightParen)
+		if err != nil {
+			return nil, err
+		}
+		body, err := p.record()
+		if err != nil {
+			return nil, err
+		}
+		f := &FuncExpr{Params: params, FuncPos: v.Pos, FuncEnd: body.End(), Body: body}
+		return &LetVar{Name: v.Val, NamePos: v.Pos, Val: f}, nil
+	}
+	return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("Unexpected token '%s' in let binding", p.peek().Val)}
 }
 
 func (p *Parser) recordField() (*RecField, error) {

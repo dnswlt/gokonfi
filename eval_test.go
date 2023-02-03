@@ -182,16 +182,6 @@ func TestEvalBuiltins(t *testing.T) {
 	}
 }
 
-/*
-Some syntactic sugar ideas:
-
-let func f(x) {}
-  {same as}
-let f: func (x) {}
-let template f(x) {}
-let f: template (x) {}
-*/
-
 func TestEvalFunc(t *testing.T) {
 	tests := []struct {
 		input string
@@ -208,12 +198,12 @@ func TestEvalFunc(t *testing.T) {
 			y: f("string_as_bool", 10, 11)
 			}.y`, want: IntVal(11)},
 		{input: `{
-			let f: template (x) { val: x } 
+			let template f(x) { val: x } 
 			y: f('a')
 			}.y.val`, want: StringVal("a")},
 		// Factorial, can't go without it:
 		{input: `{
-			let fac: func (n) { if n == 0 then 1 else n * fac(n-1) } 
+			let fac(n): if n == 0 then 1 else n * fac(n-1)
 			y: fac(10)
 			}.y`, want: IntVal(3628800)},
 		// Higher-order functions? Piece-o-cake:

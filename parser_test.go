@@ -81,6 +81,39 @@ func TestParseTopLevelExpr(t *testing.T) {
 	}
 }
 
+func TestParseLetVar(t *testing.T) {
+	tests := []struct {
+		input   string
+		wantErr bool // Whether want success or error
+	}{
+		{input: "let x: 7", wantErr: false},
+		{input: "let x, y: 7", wantErr: true},
+		{input: "let x(y): 7", wantErr: false},
+		{input: "let template x() { a: 1 }", wantErr: false},
+		{input: "let w(): { a: 1 }", wantErr: false},
+		{input: "let w: func() { { a: 1 } }", wantErr: false},
+		{input: "let w: func x() { a: 1 }", wantErr: true},
+	}
+	for i, test := range tests {
+		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
+			ts, err := scanTokens(test.input)
+			if err != nil {
+				t.Fatalf("Scan error: %s", err)
+			}
+			p := NewParser(ts)
+			_, err = p.letVar()
+			if !test.wantErr && !p.AtEnd() {
+				t.Errorf("did not parse entire input")
+			}
+			if test.wantErr && err == nil {
+				t.Errorf("Wanted error, but got success")
+			} else if !test.wantErr && err != nil {
+				t.Errorf("Wanted no error, but got %s", err)
+			}
+		})
+	}
+}
+
 func TestParseFieldAcc(t *testing.T) {
 	ts, err := scanTokens("{}.a.b")
 	if err != nil {
