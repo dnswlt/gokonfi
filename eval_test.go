@@ -2,6 +2,7 @@ package gokonfi
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -246,6 +247,40 @@ func TestEvalFunc(t *testing.T) {
 			}
 			if got != test.want {
 				t.Errorf("Got %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestEvalErrors(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{input: "len(1)", want: "invalid type"},
+		{input: "len('a', 'b')", want: "wrong number of arguments"},
+		{input: "{x: 1}.y", want: "no field"},
+		{input: "'a'.y", want: "Cannot access"},
+		{input: "{let f: 'a' y: f(0) }", want: "not callable"},
+		{input: "{x: y y: x}", want: "Cyclic"},
+		{input: "{x: { a: b b: y.c } y: { c: x.a } }", want: "Cyclic"},
+		// TODO: These should be EvalErrors, but are not:
+		{input: "'a' + 3", want: "incompatible types"},
+		{input: "1 + 1.0", want: "incompatible types"},
+		{input: "(func (x) {x}) + 3", want: "incompatible types"},
+		{input: "-'a'", want: "incompatible type"},
+	}
+	for i, test := range tests {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			e, err := parse(test.input)
+			if err != nil {
+				t.Fatalf("Cannot parse expression: %s", err)
+			}
+			got, err := Eval(e, GlobalCtx())
+			if err == nil {
+				t.Errorf("Expected error, but got: %s", got)
+			} else if !strings.Contains(err.Error(), test.want) {
+				t.Errorf("Got %v, wanted it to contain '%v'", err, test.want)
 			}
 		})
 	}
