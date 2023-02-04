@@ -13,6 +13,7 @@ var builtinFunctions = []*NativeFuncVal{
 	{Name: "cond", Arity: 3, F: builtinCond},
 	{Name: "format", Arity: -1, F: builtinFormat},
 	{Name: "str", Arity: 1, F: builtinStr},
+	{Name: "isnil", Arity: 1, F: builtinIsnil},
 }
 
 func builtinLen(args []Val) (Val, error) {
@@ -64,4 +65,9 @@ func builtinFormat(args []Val) (Val, error) {
 
 func builtinStr(args []Val) (Val, error) {
 	return StringVal(args[0].String()), nil
+}
+
+func builtinIsnil(args []Val) (Val, error) {
+	_, ok := args[0].(NilVal)
+	return BoolVal(ok), nil
 }

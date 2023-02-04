@@ -34,3 +34,25 @@ func TestFormatSingleArg(t *testing.T) {
 		})
 	}
 }
+
+func TestIsnil(t *testing.T) {
+	tests := []struct {
+		input Val
+		want  bool
+	}{
+		{input: BoolVal(true), want: false},
+		{input: IntVal(1), want: false},
+		{input: NilVal{}, want: true},
+	}
+	for i, test := range tests {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			got, err := builtinIsnil([]Val{test.input})
+			if err != nil {
+				t.Fatalf("Error calling isnil: %s", err)
+			}
+			if got != BoolVal(test.want) {
+				t.Errorf("Want: %v, got %v", test.want, got)
+			}
+		})
+	}
+}

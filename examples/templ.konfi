@@ -1,0 +1,17 @@
+{
+    let template t(params) {
+        let p: {
+            id: 0
+            port: 8081
+            startTime: nil
+        } @ params
+        url: format("http://example.com:%d/?id=%d", p.port, p.id)
+        verbose: true
+        numThreads: 10
+        startTimeInWeirdFormat: cond(isnil(p.startTime), format('weird_format(%v)', p.startTime), nil)
+    }
+    config: t({id: 101 startTime: '2023-01-01 18:00:00'}) @ {
+        verbose: false
+        useFibers: true
+    }
+}
