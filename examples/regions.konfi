@@ -1,0 +1,31 @@
+{
+    // map will be part of the stdlib. But we can already define it ourselves:
+    let map(f, xs): flatmap(func (x) { [f(x)] }, xs)
+
+    let template cfg(params) {
+        let p: {
+            region: "europe-west1"
+            num_tasks: 10
+            public: true
+        } @ params
+        url: format("http://example.com/%s/service", p.region)
+        task_config: {
+            num_tasks: p.num_tasks
+            min_ram: 1024
+            max_ram: 4096
+            min_cpu: 1
+            max_cpu: 8
+            // TODO: No health checks in west regions. Investigating...
+            health_checks: !contains(p.region, "west")
+        }
+        ip_config: {
+            listen_addr: cond(p.public, "0.0.0.0", "192.168.0.1")
+
+        }
+    }
+    configs: map(cfg, [
+        {region: "europe-west1"},
+        {region: "europe-east4" num_tasks: 4},
+        {region: "europe-central1" public: false}
+    ])
+}

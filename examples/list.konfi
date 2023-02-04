@@ -1,0 +1,16 @@
+{
+    let map(f, xs): flatmap(func (x) { [f(x)] }, xs)
+    let filter(p, xs): flatmap(func (x) { if p(x) then [x] else [] }, xs)
+    let concat(xs, ys): flatmap(func (x) { x }, [xs, ys])
+    let max(x, y): if x > y then x else y
+    let sum(x, y): x + y
+    let pos(x): x > 0
+    let sqr(x): x * x
+
+    xs: filter(pos, [-1, 2, -3, 4, -5, 6])
+    ys: map(sqr, [1, -2, 3])
+    z: fold(max, [1, 2, 3, 4, -5])
+    w: fold(sum, 0, [1, 2, 3, 4, 5])
+    // Folding an empty list yields nil.
+    nil_field: fold(func(x){x}, [])
+}

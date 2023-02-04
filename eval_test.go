@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"unsafe"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestEvalArithmeticExpr(t *testing.T) {
@@ -160,6 +163,35 @@ func TestEvalConditionalExpr(t *testing.T) {
 	}
 }
 
+func TestEvalListExpr(t *testing.T) {
+	tests := []struct {
+		input string
+		want  Val
+	}{
+		{input: "[1, 'a']", want: &ListVal{[]Val{IntVal(1), StringVal("a")}}},
+		{input: "len([]) == 0", want: BoolVal(true)},
+		{input: "len([1, 2, 3])", want: IntVal(3)},
+		{input: "if [1] then 'good' else 'bad'", want: StringVal("good")},
+		{input: "if [] then 'bad' else 'good'", want: StringVal("good")},
+		{input: "[[1]]", want: &ListVal{[]Val{&ListVal{[]Val{IntVal(1)}}}}},
+	}
+	for i, test := range tests {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			e, err := parse(test.input)
+			if err != nil {
+				t.Fatalf("Cannot parse expression: %s", err)
+			}
+			got, err := Eval(e, GlobalCtx())
+			if err != nil {
+				t.Fatalf("Failed to evaluate: %s", err)
+			}
+			if diff := cmp.Diff(test.want, got); diff != "" {
+				t.Fatalf("List mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
 func TestEvalBuiltins(t *testing.T) {
 	tests := []struct {
 		input string
@@ -191,6 +223,60 @@ func TestEvalBuiltins(t *testing.T) {
 				t.Errorf("Got %v, want %v", got, test.want)
 			}
 
+		})
+	}
+}
+
+// Almost an integration test (or a functional programming competition?):
+// Tests higher-order functions using list builtins (flatmap, fold).
+func TestEvalFunctional(t *testing.T) {
+	const input = `{
+		let map(f, xs): flatmap(func (x) { [f(x)] }, xs)
+		let filter(p, xs): flatmap(func (x) { if p(x) then [x] else [] }, xs)
+		let concat(xs, ys): flatmap(func (x) { x }, [xs, ys])
+		let max(x, y): if x > y then x else y
+		let sum(x, y): x + y
+		let pos(x): x > 0
+		let sqr(x): x * x
+	
+		xs: filter(pos, [-1, 2, -3, 4, -5, 6])
+		ys: map(sqr, [1, -2, 3])
+		z: fold(max, [1, 2, 3, 4, -5])
+		w: fold(sum, 0, [1, 2, 3, 4, 5])
+		// Folding an empty list yields nil.
+		nil_field: fold(func(x){x}, [])
+		cs: concat(['a'], [1])
+	}`
+	tests := []struct {
+		field string
+		want  Val
+	}{
+		{field: "xs", want: &ListVal{[]Val{IntVal(2), IntVal(4), IntVal(6)}}},
+		{field: "ys", want: &ListVal{[]Val{IntVal(1), IntVal(4), IntVal(9)}}},
+		{field: "z", want: IntVal(4)},
+		{field: "w", want: IntVal(15)},
+		{field: "nil_field", want: NilVal{}},
+		{field: "cs", want: &ListVal{[]Val{StringVal("a"), IntVal(1)}}},
+	}
+
+	e, err := parse(input)
+	if err != nil {
+		t.Fatalf("Cannot parse expression: %s", err)
+	}
+	got, err := Eval(e, GlobalCtx())
+	if err != nil {
+		t.Fatalf("Failed to evaluate: %s", err)
+	}
+	record, ok := got.(*RecVal)
+	if !ok {
+		t.Fatalf("Got %T, want *RecVal", got)
+	}
+
+	for i, test := range tests {
+		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
+			if diff := cmp.Diff(test.want, record.Fields[test.field]); diff != "" {
+				t.Errorf("Record field %s mismatch (-want +got):\n%s", test.field, diff)
+			}
 		})
 	}
 }
@@ -284,5 +370,19 @@ func TestEvalErrors(t *testing.T) {
 				t.Errorf("Got '%s', wanted it to contain '%v'", err, test.want)
 			}
 		})
+	}
+}
+
+func TestSizeofVal(t *testing.T) {
+	// Some tests showing that RecVal and ListVal are small enough
+	// to be passed by value.
+	if unsafe.Sizeof((*int)(nil)) != 8 {
+		t.Skip("Skipping Sizeof tests on non-64bit architecture")
+	}
+	if got := unsafe.Sizeof(ListVal{}); got != 24 {
+		t.Errorf("Want size 24 for ListVal, got %d", got)
+	}
+	if got := unsafe.Sizeof(RecVal{}); got != 8 {
+		t.Errorf("Want size 8 for RecVal, got %d", got)
 	}
 }

@@ -130,6 +130,10 @@ func (s *Scanner) NextToken() (token.Token, error) {
 			return s.token(token.LeftBrace)
 		case '}':
 			return s.token(token.RightBrace)
+		case '[':
+			return s.token(token.LeftSquare)
+		case ']':
+			return s.token(token.RightSquare)
 		case ',':
 			return s.token(token.Comma)
 		case ':':

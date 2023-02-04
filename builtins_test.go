@@ -24,7 +24,7 @@ func TestFormatSingleArg(t *testing.T) {
 				StringVal(test.format),
 				test.arg,
 			}
-			got, err := builtinFormat(args)
+			got, err := builtinFormat(args, nil)
 			if err != nil {
 				t.Fatalf("Failed to format: %s", err)
 			}
@@ -46,7 +46,7 @@ func TestIsnil(t *testing.T) {
 	}
 	for i, test := range tests {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			got, err := builtinIsnil([]Val{test.input})
+			got, err := builtinIsnil([]Val{test.input}, nil)
 			if err != nil {
 				t.Fatalf("Error calling isnil: %s", err)
 			}

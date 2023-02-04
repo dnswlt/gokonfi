@@ -106,6 +106,12 @@ type RecExpr struct {
 	RecEnd  token.Pos
 }
 
+type ListExpr struct {
+	Elements []Expr
+	ListPos  token.Pos
+	ListEnd  token.Pos
+}
+
 type LiteralPos struct {
 	ValPos token.Pos
 	ValEnd token.Pos
@@ -217,6 +223,14 @@ func (e *RecExpr) End() token.Pos {
 }
 func (e *RecExpr) exprNode() {}
 
+func (e *ListExpr) Pos() token.Pos {
+	return e.ListPos
+}
+func (e *ListExpr) End() token.Pos {
+	return e.ListEnd
+}
+func (e *ListExpr) exprNode() {}
+
 func (e *ConditionalExpr) Pos() token.Pos {
 	return e.Cond.Pos()
 }
@@ -286,6 +300,31 @@ func (p *Parser) AtEnd() bool {
 
 // Parses an expression.
 func (p *Parser) Expression() (Expr, error) {
+	return p.conditional()
+}
+
+func (p *Parser) conditional() (Expr, error) {
+	if p.match(token.If) {
+		cond, err := p.Expression()
+		if err != nil {
+			return nil, err
+		}
+		if err = p.expect(token.Then, "conditional"); err != nil {
+			return nil, err
+		}
+		x, err := p.Expression()
+		if err != nil {
+			return nil, err
+		}
+		if err = p.expect(token.Else, "conditional"); err != nil {
+			return nil, err
+		}
+		y, err := p.Expression()
+		if err != nil {
+			return nil, err
+		}
+		return &ConditionalExpr{cond, x, y}, nil
+	}
 	return p.logicalOr()
 }
 
@@ -465,6 +504,8 @@ func (p *Parser) identList(sep token.TokenType, close token.TokenType) ([]*VarEx
 	return nil, &ParseError{tok: p.previous(), msg: "reached end of input while parsing identifier list"}
 }
 
+// Operands are syntactically closed expressions, i.e. either single tokens or well-delimited
+// expressions like "(" <expr> ")".
 func (p *Parser) operand() (Expr, error) {
 	switch {
 	case p.match(token.LeftParen):
@@ -513,6 +554,14 @@ func (p *Parser) operand() (Expr, error) {
 			return nil, err
 		}
 		return r, nil
+	case p.match(token.LeftSquare):
+		start := p.previous()
+		// List
+		xs, err := p.exprList(token.Comma, token.RightSquare)
+		if err != nil {
+			return nil, err
+		}
+		return &ListExpr{Elements: xs, ListPos: start.Pos, ListEnd: p.previous().End}, nil
 	case p.match(token.Func):
 		funcPos := p.previous().Pos
 		if err := p.expect(token.LeftParen, "func"); err != nil {
@@ -548,26 +597,6 @@ func (p *Parser) operand() (Expr, error) {
 			return nil, err
 		}
 		return &FuncExpr{Params: params, FuncPos: funcPos, FuncEnd: p.previous().End, Body: body}, nil
-	case p.match(token.If):
-		cond, err := p.Expression()
-		if err != nil {
-			return nil, err
-		}
-		if err = p.expect(token.Then, "conditional"); err != nil {
-			return nil, err
-		}
-		x, err := p.Expression()
-		if err != nil {
-			return nil, err
-		}
-		if err = p.expect(token.Else, "conditional"); err != nil {
-			return nil, err
-		}
-		y, err := p.Expression()
-		if err != nil {
-			return nil, err
-		}
-		return &ConditionalExpr{cond, x, y}, nil
 	}
 	return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("unexpected token type %s for primary expression", p.peek().Typ)}
 }

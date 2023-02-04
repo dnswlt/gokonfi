@@ -67,6 +67,7 @@ func TestParseTopLevelExpr(t *testing.T) {
 		{name: "func", input: "func () {42}", want: (*FuncExpr)(nil)},
 		{name: "cond", input: "if 1 == 2 then 'foo' else 'bar'", want: (*ConditionalExpr)(nil)},
 		{name: "merge", input: "{x: 1} @ {y: 2}", want: (*BinaryExpr)(nil)},
+		{name: "list", input: "[1, 2, 3]", want: (*ListExpr)(nil)},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -230,6 +231,7 @@ func TestParseErrors(t *testing.T) {
 		{input: "{{}}", errAtPos: 1},
 		{input: "{let x(7) { 7 }}", errAtPos: 7},
 		{input: "{let x() { 7 }}", errAtPos: 9},
+		{input: "[[]}", errAtPos: 3},
 	}
 	for i, test := range tests {
 		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {

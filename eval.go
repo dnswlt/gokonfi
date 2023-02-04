@@ -10,7 +10,7 @@ import (
 
 type Val interface {
 	fmt.Stringer
-	Bool() bool // TODO: make this a regular function
+	Bool() bool
 	valImpl()
 }
 
@@ -113,6 +113,10 @@ func (r *RecVal) setField(field string, val Val) {
 	r.Fields[field] = val
 }
 
+type ListVal struct {
+	Elements []Val
+}
+
 type IntVal int64
 type DoubleVal float64
 type BoolVal bool
@@ -122,7 +126,7 @@ type CallableVal interface {
 	Call(args []Val, ctx *Ctx) (Val, error)
 }
 type NativeFuncVal struct {
-	F     func([]Val) (Val, error)
+	F     func([]Val, *Ctx) (Val, error)
 	Name  string
 	Arity int
 }
@@ -136,7 +140,7 @@ func (f *NativeFuncVal) Call(args []Val, ctx *Ctx) (Val, error) {
 	if f.Arity >= 0 && len(args) != f.Arity {
 		return nil, fmt.Errorf("wrong number of arguments for %s: got %d want %d", f.Name, len(args), f.Arity)
 	}
-	return f.F(args)
+	return f.F(args, ctx)
 }
 
 func (f *FuncExprVal) Call(args []Val, ctx *Ctx) (Val, error) {
@@ -151,14 +155,15 @@ func (f *FuncExprVal) Call(args []Val, ctx *Ctx) (Val, error) {
 	return Eval(f.F.Body, fctx)
 }
 
-func (v IntVal) valImpl()        {}
-func (v DoubleVal) valImpl()     {}
-func (v BoolVal) valImpl()       {}
-func (v StringVal) valImpl()     {}
-func (v NilVal) valImpl()        {}
-func (v *RecVal) valImpl()       {}
-func (v NativeFuncVal) valImpl() {}
-func (v FuncExprVal) valImpl()   {}
+func (v IntVal) valImpl()         {}
+func (v DoubleVal) valImpl()      {}
+func (v BoolVal) valImpl()        {}
+func (v StringVal) valImpl()      {}
+func (v NilVal) valImpl()         {}
+func (v *RecVal) valImpl()        {}
+func (v *ListVal) valImpl()       {}
+func (v *NativeFuncVal) valImpl() {}
+func (v *FuncExprVal) valImpl()   {}
 
 func (x IntVal) Bool() bool {
 	return x != 0
@@ -177,6 +182,9 @@ func (s NilVal) Bool() bool {
 }
 func (r *RecVal) Bool() bool {
 	return len(r.Fields) > 0
+}
+func (r *ListVal) Bool() bool {
+	return len(r.Elements) > 0
 }
 func (r *NativeFuncVal) Bool() bool {
 	return true
@@ -202,6 +210,9 @@ func (s NilVal) String() string {
 }
 func (r *RecVal) String() string {
 	return "<rec>"
+}
+func (r *ListVal) String() string {
+	return "<list>"
 }
 func (f *NativeFuncVal) String() string {
 	return fmt.Sprintf("<builtin %s>", f.Name)
@@ -484,6 +495,16 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 			rec.setField(f.Name, v)
 		}
 		return rec, nil
+	case *ListExpr:
+		xs := make([]Val, len(e.Elements))
+		for i, elem := range e.Elements {
+			x, err := Eval(elem, ctx)
+			if err != nil {
+				return nil, err
+			}
+			xs[i] = x
+		}
+		return &ListVal{Elements: xs}, nil
 	case *FieldAcc:
 		v, err := Eval(e.X, ctx)
 		if err != nil {

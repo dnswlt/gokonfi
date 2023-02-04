@@ -16,6 +16,10 @@ func TestEncodeAsJson(t *testing.T) {
 		{input: "{x: {y: {z: 0}}}", want: `{"x":{"y":{"z":0}}}`},
 		{input: "{x: nil}", want: `{"x":null}`},
 		{input: "{let f(x): x + '.exe' y: f('konfi')}", want: `{"y":"konfi.exe"}`},
+		{input: "{x: [1, 2]}", want: `{"x":[1,2]}`},
+		// Don't want any pesky HTML escaping for < and >
+		{input: "{x: '<>'}", want: `{"x":"<>"}`},
+		{input: "['<>']", want: `["<>"]`},
 	}
 	for i, test := range tests {
 		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
