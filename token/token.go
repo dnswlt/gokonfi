@@ -64,3 +64,7 @@ type Token struct {
 }
 
 type Pos int
+
+type Poser interface {
+	Pos() Pos
+}

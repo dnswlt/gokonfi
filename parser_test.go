@@ -219,3 +219,28 @@ func TestParseRecordExpr(t *testing.T) {
 		})
 	}
 }
+
+func TestParseErrors(t *testing.T) {
+	tests := []struct {
+		input    string
+		errAtPos int
+	}{
+		{input: "{z}", errAtPos: 2},
+		{input: "{z: 4, y: 3}", errAtPos: 5},
+		{input: "{{}}", errAtPos: 1},
+		{input: "{let x(7) { 7 }}", errAtPos: 7},
+		{input: "{let x() { 7 }}", errAtPos: 9},
+	}
+	for i, test := range tests {
+		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
+			got, err := parse(test.input)
+			if err == nil {
+				t.Errorf("Want error, got a successful parse: %T", got)
+			} else if parseErr, ok := err.(*ParseError); !ok {
+				t.Errorf("Want ParseError, got %T", err)
+			} else if parseErr.tok.Pos != token.Pos(test.errAtPos) {
+				t.Errorf("Got error at pos %d (%s), want at pos %d", parseErr.tok.Pos, parseErr, test.errAtPos)
+			}
+		})
+	}
+}

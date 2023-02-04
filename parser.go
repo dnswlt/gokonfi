@@ -25,8 +25,12 @@ func (e *ParseError) Error() string {
 	return fmt.Sprintf("ParseError: %s at position %d", e.msg, e.tok.Pos)
 }
 
+func (e *ParseError) Pos() token.Pos {
+	return e.tok.Pos
+}
+
 type Node interface {
-	Pos() token.Pos
+	token.Poser
 	End() token.Pos
 }
 
@@ -266,7 +270,7 @@ func (p *Parser) expect(tokenType token.TokenType, context string) error {
 	if !p.match(tokenType) {
 		t := p.peek()
 		return &ParseError{
-			tok: t, msg: fmt.Sprintf("Expected token of type %s, got '%s' (%s) in %s",
+			tok: t, msg: fmt.Sprintf("expected token of type %s, got '%s' (%s) in %s",
 				tokenType, t.Val, t.Typ, context)}
 	}
 	return nil
@@ -393,7 +397,7 @@ Loop:
 		switch {
 		case p.match(token.Dot):
 			if !p.match(token.Ident) {
-				return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("Expected identifier, got %s", p.peek().Typ)}
+				return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("expected identifier, got %s", p.peek().Typ)}
 			}
 			ident := p.previous()
 			e = &FieldAcc{X: e, Name: ident.Val, NameEnd: ident.End}
@@ -428,7 +432,7 @@ func (p *Parser) exprList(sep token.TokenType, close token.TokenType) ([]Expr, e
 			return nil, err
 		}
 	}
-	return nil, &ParseError{tok: p.previous(), msg: "Reached end of input while parsing expression list"}
+	return nil, &ParseError{tok: p.previous(), msg: "reached end of input while parsing expression list"}
 }
 
 func (p *Parser) identList(sep token.TokenType, close token.TokenType) ([]*VarExpr, error) {
@@ -443,7 +447,7 @@ func (p *Parser) identList(sep token.TokenType, close token.TokenType) ([]*VarEx
 		}
 		t := p.previous()
 		if seen[t.Val] {
-			return nil, &ParseError{tok: t, msg: fmt.Sprintf("Duplicate identifier in identifier list: %s", t.Val)}
+			return nil, &ParseError{tok: t, msg: fmt.Sprintf("duplicate identifier in identifier list: %s", t.Val)}
 		}
 		seen[t.Val] = true
 		idents = append(idents, &VarExpr{Name: t.Val, NamePos: t.Pos, NameEnd: t.End})
@@ -454,7 +458,7 @@ func (p *Parser) identList(sep token.TokenType, close token.TokenType) ([]*VarEx
 			return nil, err
 		}
 	}
-	return nil, &ParseError{tok: p.previous(), msg: "Reached end of input while parsing identifier list"}
+	return nil, &ParseError{tok: p.previous(), msg: "reached end of input while parsing identifier list"}
 }
 
 func (p *Parser) operand() (Expr, error) {
@@ -561,12 +565,12 @@ func (p *Parser) operand() (Expr, error) {
 		}
 		return &ConditionalExpr{cond, x, y}, nil
 	}
-	return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("Unexpected token type %s for primary expression", p.peek().Typ)}
+	return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("unexpected token type %s for primary expression", p.peek().Typ)}
 }
 
 func (p *Parser) record() (Expr, error) {
 	if !p.match(token.LeftBrace) {
-		return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("Expected '{' token to parse record, got %s", p.peek().Val)}
+		return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("expected '{' token to parse record, got %s", p.peek().Val)}
 	}
 	recPos := p.previous().Pos
 	letVars := make(map[string]LetVar)
@@ -582,7 +586,7 @@ func (p *Parser) record() (Expr, error) {
 				return nil, err
 			}
 			if _, ok := letVars[l.Name]; ok {
-				return nil, &ParseError{tok: fTok, msg: fmt.Sprintf("Duplicate let binding field '%s'", l.Name)}
+				return nil, &ParseError{tok: fTok, msg: fmt.Sprintf("duplicate let binding field '%s'", l.Name)}
 			}
 			letVars[l.Name] = *l
 		} else {
@@ -591,12 +595,12 @@ func (p *Parser) record() (Expr, error) {
 				return nil, err
 			}
 			if _, ok := fields[f.Name]; ok {
-				return nil, &ParseError{tok: fTok, msg: fmt.Sprintf("Duplicate record field '%s'", f.Name)}
+				return nil, &ParseError{tok: fTok, msg: fmt.Sprintf("duplicate record field '%s'", f.Name)}
 			}
 			fields[f.Name] = *f
 		}
 	}
-	return nil, &ParseError{tok: p.previous(), msg: "Reached end of input while parsing record"}
+	return nil, &ParseError{tok: p.previous(), msg: "reached end of input while parsing record"}
 }
 
 // Can be one of
@@ -667,18 +671,18 @@ func (p *Parser) letVar() (*LetVar, error) {
 		f := &FuncExpr{Params: params, FuncPos: v.Pos, FuncEnd: body.End(), Body: body}
 		return &LetVar{Name: v.Val, NamePos: v.Pos, Val: f}, nil
 	}
-	return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("Unexpected token '%s' in let binding", p.peek().Val)}
+	return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("unexpected token '%s' in let binding", p.peek().Val)}
 }
 
 func (p *Parser) recordField() (*RecField, error) {
 	if !p.match(token.Ident) {
 		t := p.peek()
-		return nil, &ParseError{tok: t, msg: fmt.Sprintf("Expected identifier for record field, got %s", t.Typ)}
+		return nil, &ParseError{tok: t, msg: fmt.Sprintf("expected identifier for record field, got %s", t.Typ)}
 	}
 	field := p.previous()
 	if !p.match(token.Colon) {
 		t := p.peek()
-		return nil, &ParseError{tok: t, msg: fmt.Sprintf("Expected ':' for record field, got %s", t.Typ)}
+		return nil, &ParseError{tok: t, msg: fmt.Sprintf("expected ':' for record field, got %s", t.Typ)}
 	}
 	expr, err := p.Expression()
 	if err != nil {

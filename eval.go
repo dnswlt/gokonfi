@@ -97,6 +97,10 @@ func (e *EvalError) Error() string {
 	return fmt.Sprintf("EvalError: %s at position %d", e.msg, e.pos)
 }
 
+func (e *EvalError) Pos() token.Pos {
+	return e.pos
+}
+
 type RecVal struct {
 	Fields map[string]Val
 }
@@ -432,14 +436,14 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 	case *VarExpr:
 		lval, vctx := ctx.Lookup(e.Name)
 		if lval == nil {
-			return nil, &EvalError{pos: e.Pos(), msg: fmt.Sprintf("Unbound variable %s", e.Name)}
+			return nil, &EvalError{pos: e.Pos(), msg: fmt.Sprintf("unbound variable %s", e.Name)}
 		}
 		switch lv := lval.(type) {
 		case *FullyEvaluated:
 			return lv.V, nil
 		case *LazyExpr:
 			if vctx.IsActive(e.Name) {
-				return nil, &EvalError{pos: e.Pos(), msg: "Cyclic variable dependencies detected"}
+				return nil, &EvalError{pos: e.Pos(), msg: "cyclic variable dependencies detected"}
 			}
 			vctx.SetActive(e.Name)
 			v, err := Eval(lv.E, vctx)
@@ -491,9 +495,9 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 				return v, nil
 			}
 			// TODO: Add DotPos to FieldAcc.
-			return nil, &EvalError{pos: e.End(), msg: fmt.Sprintf("Record has no field '%s'", e.Name)}
+			return nil, &EvalError{pos: e.End(), msg: fmt.Sprintf("record has no field '%s'", e.Name)}
 		default:
-			return nil, &EvalError{pos: e.End(), msg: fmt.Sprintf("Cannot access .%s on type %T", e.Name, e)}
+			return nil, &EvalError{pos: e.End(), msg: fmt.Sprintf("cannot access .%s on type %T", e.Name, e)}
 		}
 	case *CallExpr:
 		fe, err := Eval(e.Func, ctx)
@@ -502,7 +506,7 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		}
 		f, ok := fe.(CallableVal)
 		if !ok {
-			return nil, &EvalError{pos: e.Func.Pos(), msg: fmt.Sprintf("Type %T is not callable", fe)}
+			return nil, &EvalError{pos: e.Func.Pos(), msg: fmt.Sprintf("type %T is not callable", fe)}
 		}
 		args := make([]Val, len(e.Args))
 		for i, arg := range e.Args {
@@ -534,7 +538,7 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		}
 		return Eval(e.Y, ctx)
 	}
-	return nil, &EvalError{pos: expr.Pos(), msg: "not implemented"}
+	return nil, &EvalError{pos: expr.Pos(), msg: fmt.Sprintf("not implemented: %T", expr)}
 }
 
 func MergeRecords(x, y Val) (Val, error) {
