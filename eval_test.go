@@ -223,6 +223,16 @@ func TestEvalFunc(t *testing.T) {
 			let apply_n: func (f, n, v) { if n == 0 then v else apply_n(f, n-1, f(v)) } 
 			y: apply_n(func (x) {x * x}, 4, 2)
 			}.y`, want: IntVal(65536)},
+		// Lexical scoping:
+		{input: `{
+			let adder: func (n) { func (k) { n + k } }
+			let add3: adder(3) 
+			y: {
+				// This n is not visible to add3 in the call below.
+				n: 10
+				a: add3(1)
+			}
+			}.y.a`, want: IntVal(4)},
 	}
 	for i, test := range tests {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {

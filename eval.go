@@ -123,7 +123,8 @@ type NativeFuncVal struct {
 	Arity int
 }
 type FuncExprVal struct {
-	F *FuncExpr
+	F   *FuncExpr
+	ctx *Ctx // "Closure": Context captured at function declaration
 }
 
 func (f *NativeFuncVal) Call(args []Val, ctx *Ctx) (Val, error) {
@@ -139,7 +140,7 @@ func (f *FuncExprVal) Call(args []Val, ctx *Ctx) (Val, error) {
 	if len(args) != arity {
 		return nil, fmt.Errorf("wrong number of arguments for %s: got %d want %d", f.String(), len(args), arity)
 	}
-	fctx := ChildCtx(ctx)
+	fctx := ChildCtx(f.ctx)
 	for i, p := range f.F.Params {
 		fctx.Store(p.Name, args[i])
 	}
@@ -504,7 +505,7 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		}
 		return nil, &EvalError{pos: e.Func.Pos(), msg: err.Error()}
 	case *FuncExpr:
-		return &FuncExprVal{F: e}, nil
+		return &FuncExprVal{F: e, ctx: ctx}, nil
 	case *ConditionalExpr:
 		cond, err := Eval(e.Cond, ctx)
 		if err != nil {
