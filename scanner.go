@@ -22,6 +22,7 @@ func NewScanner(input string) Scanner {
 	return Scanner{input: input, pos: 0}
 }
 
+// ScanError is the error type returned by calls to [Scanner.NextToken].
 type ScanError struct {
 	pos token.Pos
 	msg string
@@ -43,6 +44,7 @@ var (
 	numberRegexp = regexp.MustCompile(`^(?:\d+[eE][+-]?\d+|\d*\.\d+(?:[eE][+-]?\d+)?|\d+\.\d*(?:[eE][+-]?\d+)?|(\d+))`)
 )
 
+// Returns the position at which the ScanError occurred.
 func (s *ScanError) Pos() token.Pos {
 	return s.pos
 }
@@ -51,11 +53,12 @@ func (e *ScanError) Error() string {
 	return fmt.Sprintf("scanError: %s at position %d", e.msg, e.pos)
 }
 
+// AtEnd returns true if the scanner has processed its input entirely.
 func (s *Scanner) AtEnd() bool {
 	return s.pos >= len(s.input)
 }
 
-func (s *Scanner) Rem() string {
+func (s *Scanner) rem() string {
 	return s.input[s.pos:]
 }
 
@@ -100,6 +103,10 @@ func (s *Scanner) tokenVal(typ token.TokenType, val string) (token.Token, error)
 	return token.Token{Typ: typ, Pos: token.Pos(s.mark), End: token.Pos(s.pos), Val: val}, nil
 }
 
+// NextToken scans the next token in the input and advances the scanner state.
+// This function is where all the lexing magic happens.
+//
+// If the scanner has reached the end of the input, it returns [token.EndOfInput].
 func (s *Scanner) NextToken() (token.Token, error) {
 	// Iterate until a token is found, skipping comments and whitespace.
 	for !s.AtEnd() {

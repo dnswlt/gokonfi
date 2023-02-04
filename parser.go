@@ -12,10 +12,13 @@ type Parser struct {
 	current int
 }
 
+// Returns a new Parser that will process tokens, which will typically
+// have been generated using a [Scanner].
 func NewParser(tokens []token.Token) Parser {
 	return Parser{tokens: tokens, current: 0}
 }
 
+// ParseError is the error type returned by [Parser] methods.
 type ParseError struct {
 	tok token.Token
 	msg string
@@ -276,6 +279,7 @@ func (p *Parser) expect(tokenType token.TokenType, context string) error {
 	return nil
 }
 
+// AtEnd returns true if the parser has processed all tokens.
 func (p *Parser) AtEnd() bool {
 	return p.current >= len(p.tokens)-1
 }

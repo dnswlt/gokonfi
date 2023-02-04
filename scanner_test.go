@@ -123,7 +123,7 @@ func TestScanDouble(t *testing.T) {
 			t.Fatalf("Error scanning double literal: %s", err)
 		}
 		if !s.AtEnd() {
-			t.Fatalf("Expected to be at end. Remaining substring: %s", s.Rem())
+			t.Fatalf("Expected to be at end. Remaining substring: %s", s.rem())
 		}
 		if tok.Typ != token.DoubleLiteral {
 			t.Fatalf("Expected DoubleLiteral token, got %s", tok.Typ)
@@ -142,7 +142,7 @@ func TestScanInt(t *testing.T) {
 			t.Fatalf("Error scanning int literal: %s", err)
 		}
 		if !s.AtEnd() {
-			t.Fatalf("Expected to be at end. Remaining substring: %s", s.Rem())
+			t.Fatalf("Expected to be at end. Remaining substring: %s", s.rem())
 		}
 		if tok.Typ != token.IntLiteral {
 			t.Fatalf("Expected IntLiteral token, got %s", tok.Typ)
@@ -160,8 +160,8 @@ func TestScanIntRemainder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error scanning int literal: %s", err)
 	}
-	if s.Rem() != "a" {
-		t.Fatalf("Expected remainder \"a\", got %s", s.Rem())
+	if s.rem() != "a" {
+		t.Fatalf("Expected remainder \"a\", got %s", s.rem())
 	}
 }
 
@@ -173,7 +173,7 @@ func TestScanIdentifiers(t *testing.T) {
 			t.Fatalf("Error scanning identifier: %s", err)
 		}
 		if !s.AtEnd() {
-			t.Fatalf("Expected to be at end. Remaining substring: %s", s.Rem())
+			t.Fatalf("Expected to be at end. Remaining substring: %s", s.rem())
 		}
 		if tok.Typ != token.Ident {
 			t.Fatalf("Expected Ident token, got %s", tok.Typ)
@@ -189,8 +189,8 @@ func TestScanIdentifiersInvalidChars(t *testing.T) {
 	for _, str := range []string{"x.a", "x$", "x?"} {
 		s := NewScanner(str)
 		s.NextToken()
-		if s.Rem() != str[1:] {
-			t.Fatalf("Expected remainder %s, got %s", str[1:], s.Rem())
+		if s.rem() != str[1:] {
+			t.Fatalf("Expected remainder %s, got %s", str[1:], s.rem())
 		}
 	}
 }
@@ -210,7 +210,7 @@ func TestScanKeywords(t *testing.T) {
 			t.Fatalf("Error scanning keyword: %s", err)
 		}
 		if !s.AtEnd() {
-			t.Fatalf("Expected to be at end. Remaining substring: %s", s.Rem())
+			t.Fatalf("Expected to be at end. Remaining substring: %s", s.rem())
 		}
 		if tok.Typ != td.expectedType {
 			t.Fatalf("Expected Keyword token, got %s", tok.Typ)
@@ -239,7 +239,7 @@ func TestScanOnelineString(t *testing.T) {
 			t.Fatalf("Error scanning identifier: %s", err)
 		}
 		if !s.AtEnd() {
-			t.Fatalf("Expected to be at end. Remaining substring: %s", s.Rem())
+			t.Fatalf("Expected to be at end. Remaining substring: %s", s.rem())
 		}
 		if tok.Typ != token.StrLiteral {
 			t.Fatalf("Expected StrLiteral token, got %s", tok.Typ)

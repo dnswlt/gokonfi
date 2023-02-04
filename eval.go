@@ -18,48 +18,48 @@ type Val interface {
 // They can be one of
 // - a fully evaluated Val
 // - an Expr that still needs to be evaluated
-type LazyVal interface {
+type lazyVal interface {
 	lazyImpl()
 }
 
 // An unevaluated expression used as a LazyVal.
-type LazyExpr struct {
-	E Expr
+type lazyExpr struct {
+	expr Expr
 }
 
 // A fully evaluated Val used as a LazyVal.
-type FullyEvaluated struct {
-	V Val
+type fullyEvaluated struct {
+	val Val
 }
 
-func (l *LazyExpr) lazyImpl()       {}
-func (l *FullyEvaluated) lazyImpl() {}
+func (l *lazyExpr) lazyImpl()       {}
+func (l *fullyEvaluated) lazyImpl() {}
 
 // Ctx is a chained evaluation context containing lazy evaluated values for
 // all variables that are in scope.
 type Ctx struct {
-	env    map[string]LazyVal // let vars and fields of the current record / module.
+	env    map[string]lazyVal // let vars and fields of the current record / module.
 	active map[string]bool    // To detect evaluation cycles
 	parent *Ctx               // Parent context (e.g. of the parent record).
 }
 
 func NewCtx() *Ctx {
-	return &Ctx{env: make(map[string]LazyVal), active: make(map[string]bool), parent: nil}
+	return &Ctx{env: make(map[string]lazyVal), active: make(map[string]bool), parent: nil}
 }
 
 func ChildCtx(parent *Ctx) *Ctx {
-	return &Ctx{env: make(map[string]LazyVal), active: make(map[string]bool), parent: parent}
+	return &Ctx{env: make(map[string]lazyVal), active: make(map[string]bool), parent: parent}
 }
 
 func GlobalCtx() *Ctx {
 	ctx := NewCtx()
 	for _, builtin := range builtinFunctions {
-		ctx.Store(builtin.Name, builtin)
+		ctx.store(builtin.Name, builtin)
 	}
 	return ctx
 }
 
-func (ctx *Ctx) Lookup(v string) (LazyVal, *Ctx) {
+func (ctx *Ctx) Lookup(v string) (lazyVal, *Ctx) {
 	c := ctx
 	for c != nil {
 		if val, ok := c.env[v]; ok {
@@ -70,22 +70,22 @@ func (ctx *Ctx) Lookup(v string) (LazyVal, *Ctx) {
 	return nil, nil // Not found
 }
 
-func (ctx *Ctx) IsActive(v string) bool {
+func (ctx *Ctx) isActive(v string) bool {
 	return ctx.active[v]
 }
 
-func (ctx *Ctx) SetActive(v string) {
+func (ctx *Ctx) setActive(v string) {
 	ctx.active[v] = true
 }
 
-func (ctx *Ctx) Store(v string, val Val) {
-	ctx.env[v] = &FullyEvaluated{val}
+func (ctx *Ctx) store(v string, val Val) {
+	ctx.env[v] = &fullyEvaluated{val}
 	// Once a value was stored, it's no longer actively being computed.
 	delete(ctx.active, v)
 }
 
-func (ctx *Ctx) StoreExpr(v string, expr Expr) {
-	ctx.env[v] = &LazyExpr{E: expr}
+func (ctx *Ctx) storeExpr(v string, expr Expr) {
+	ctx.env[v] = &lazyExpr{expr: expr}
 }
 
 type EvalError struct {
@@ -109,7 +109,7 @@ func NewRec() *RecVal {
 	return &RecVal{Fields: make(map[string]Val)}
 }
 
-func (r *RecVal) SetField(field string, val Val) {
+func (r *RecVal) setField(field string, val Val) {
 	r.Fields[field] = val
 }
 
@@ -146,7 +146,7 @@ func (f *FuncExprVal) Call(args []Val, ctx *Ctx) (Val, error) {
 	}
 	fctx := ChildCtx(f.ctx)
 	for i, p := range f.F.Params {
-		fctx.Store(p.Name, args[i])
+		fctx.store(p.Name, args[i])
 	}
 	return Eval(f.F.Body, fctx)
 }
@@ -213,7 +213,7 @@ func (f *FuncExprVal) String() string {
 
 // Binary operations on Val.
 
-func Plus(x, y Val) (Val, error) {
+func plus(x, y Val) (Val, error) {
 	if u, ok := x.(IntVal); ok {
 		if v, ok := y.(IntVal); ok {
 			return u + v, nil
@@ -229,7 +229,7 @@ func Plus(x, y Val) (Val, error) {
 	}
 	return nil, fmt.Errorf("incompatible types for +: %T and %T", x, y)
 }
-func Minus(x, y Val) (Val, error) {
+func minus(x, y Val) (Val, error) {
 	if u, ok := x.(IntVal); ok {
 		if v, ok := y.(IntVal); ok {
 			return u - v, nil
@@ -241,7 +241,7 @@ func Minus(x, y Val) (Val, error) {
 	}
 	return nil, fmt.Errorf("incompatible types for -: %T and %T", x, y)
 }
-func Times(x, y Val) (Val, error) {
+func times(x, y Val) (Val, error) {
 	if u, ok := x.(IntVal); ok {
 		if v, ok := y.(IntVal); ok {
 			return u * v, nil
@@ -253,7 +253,7 @@ func Times(x, y Val) (Val, error) {
 	}
 	return nil, fmt.Errorf("incompatible types for *: %T and %T", x, y)
 }
-func Div(x, y Val) (Val, error) {
+func div(x, y Val) (Val, error) {
 	if u, ok := x.(IntVal); ok {
 		if v, ok := y.(IntVal); ok {
 			return u / v, nil
@@ -265,7 +265,7 @@ func Div(x, y Val) (Val, error) {
 	}
 	return nil, fmt.Errorf("incompatible types for /: %T and %T", x, y)
 }
-func Modulo(x, y Val) (Val, error) {
+func modulo(x, y Val) (Val, error) {
 	if u, ok := x.(IntVal); ok {
 		if v, ok := y.(IntVal); ok {
 			return u % v, nil
@@ -273,23 +273,23 @@ func Modulo(x, y Val) (Val, error) {
 	}
 	return nil, fmt.Errorf("incompatible types for /: %T and %T", x, y)
 }
-func LogicalAnd(x, y Val) (Val, error) {
+func logicalAnd(x, y Val) (Val, error) {
 	return BoolVal(x.Bool() && y.Bool()), nil
 }
-func LogicalOr(x, y Val) (Val, error) {
+func logicalOr(x, y Val) (Val, error) {
 	return BoolVal(x.Bool() || y.Bool()), nil
 }
 
 // Val equality is delegated to Go equality.
 // This works as expected for scalar types.
 // Records never compare equal.
-func Equal(x, y Val) (Val, error) {
+func equal(x, y Val) (Val, error) {
 	return BoolVal(x == y), nil
 }
-func NotEqual(x, y Val) (Val, error) {
+func notEqual(x, y Val) (Val, error) {
 	return BoolVal(x != y), nil
 }
-func LessThan(x, y Val) (Val, error) {
+func lessThan(x, y Val) (Val, error) {
 	if u, ok := x.(IntVal); ok {
 		if v, ok := y.(IntVal); ok {
 			return BoolVal(u < v), nil
@@ -301,7 +301,7 @@ func LessThan(x, y Val) (Val, error) {
 	}
 	return nil, fmt.Errorf("incompatible types for <: %T and %T", x, y)
 }
-func LessEq(x, y Val) (Val, error) {
+func lessEq(x, y Val) (Val, error) {
 	if u, ok := x.(IntVal); ok {
 		if v, ok := y.(IntVal); ok {
 			return BoolVal(u <= v), nil
@@ -313,7 +313,7 @@ func LessEq(x, y Val) (Val, error) {
 	}
 	return nil, fmt.Errorf("incompatible types for <: %T and %T", x, y)
 }
-func GreaterThan(x, y Val) (Val, error) {
+func greaterThan(x, y Val) (Val, error) {
 	if u, ok := x.(IntVal); ok {
 		if v, ok := y.(IntVal); ok {
 			return BoolVal(u > v), nil
@@ -325,7 +325,7 @@ func GreaterThan(x, y Val) (Val, error) {
 	}
 	return nil, fmt.Errorf("incompatible types for <: %T and %T", x, y)
 }
-func GreaterEq(x, y Val) (Val, error) {
+func greaterEq(x, y Val) (Val, error) {
 	if u, ok := x.(IntVal); ok {
 		if v, ok := y.(IntVal); ok {
 			return BoolVal(u >= v), nil
@@ -339,7 +339,7 @@ func GreaterEq(x, y Val) (Val, error) {
 }
 
 // Unary operations on Val.
-func UnaryMinus(x Val) (Val, error) {
+func unaryMinus(x Val) (Val, error) {
 	if u, ok := x.(IntVal); ok {
 		return -u, nil
 
@@ -349,50 +349,50 @@ func UnaryMinus(x Val) (Val, error) {
 	return nil, fmt.Errorf("incompatible type for unary -: %T", x)
 }
 
-func UnaryNot(x Val) (Val, error) {
+func unaryNot(x Val) (Val, error) {
 	return BoolVal(!x.Bool()), nil
 }
 
-func UnaryOp(x Val, op token.TokenType) (Val, error) {
+func unaryOp(x Val, op token.TokenType) (Val, error) {
 	switch op {
 	case token.Minus:
-		return UnaryMinus(x)
+		return unaryMinus(x)
 	case token.Not:
-		return UnaryNot(x)
+		return unaryNot(x)
 	}
 	return nil, fmt.Errorf("invalid unary operator '%v'", op)
 }
 
-func BinaryOp(x, y Val, op token.TokenType) (Val, error) {
+func binaryOp(x, y Val, op token.TokenType) (Val, error) {
 	switch op {
 	case token.Plus:
-		return Plus(x, y)
+		return plus(x, y)
 	case token.Minus:
-		return Minus(x, y)
+		return minus(x, y)
 	case token.Times:
-		return Times(x, y)
+		return times(x, y)
 	case token.Div:
-		return Div(x, y)
+		return div(x, y)
 	case token.Modulo:
-		return Modulo(x, y)
+		return modulo(x, y)
 	case token.LogicalAnd:
-		return LogicalAnd(x, y)
+		return logicalAnd(x, y)
 	case token.LogicalOr:
-		return LogicalOr(x, y)
+		return logicalOr(x, y)
 	case token.Equal:
-		return Equal(x, y)
+		return equal(x, y)
 	case token.NotEqual:
-		return NotEqual(x, y)
+		return notEqual(x, y)
 	case token.LessThan:
-		return LessThan(x, y)
+		return lessThan(x, y)
 	case token.LessEq:
-		return LessEq(x, y)
+		return lessEq(x, y)
 	case token.GreaterThan:
-		return GreaterThan(x, y)
+		return greaterThan(x, y)
 	case token.GreaterEq:
-		return GreaterEq(x, y)
+		return greaterEq(x, y)
 	case token.Merge:
-		return MergeRecords(x, y)
+		return mergeValues(x, y)
 	}
 	return nil, fmt.Errorf("invalid binary operator '%v'", op)
 }
@@ -414,7 +414,7 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		if err != nil {
 			return nil, err
 		}
-		r, err := UnaryOp(x, e.Op)
+		r, err := unaryOp(x, e.Op)
 		if err != nil {
 			return nil, &EvalError{pos: e.Pos(), msg: err.Error()}
 		}
@@ -428,7 +428,7 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		if err != nil {
 			return nil, err
 		}
-		r, err := BinaryOp(x, y, e.Op)
+		r, err := binaryOp(x, y, e.Op)
 		if err != nil {
 			return nil, &EvalError{pos: e.Pos(), msg: err.Error()}
 		}
@@ -439,18 +439,18 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 			return nil, &EvalError{pos: e.Pos(), msg: fmt.Sprintf("unbound variable %s", e.Name)}
 		}
 		switch lv := lval.(type) {
-		case *FullyEvaluated:
-			return lv.V, nil
-		case *LazyExpr:
-			if vctx.IsActive(e.Name) {
+		case *fullyEvaluated:
+			return lv.val, nil
+		case *lazyExpr:
+			if vctx.isActive(e.Name) {
 				return nil, &EvalError{pos: e.Pos(), msg: "cyclic variable dependencies detected"}
 			}
-			vctx.SetActive(e.Name)
-			v, err := Eval(lv.E, vctx)
+			vctx.setActive(e.Name)
+			v, err := Eval(lv.expr, vctx)
 			if err != nil {
 				return nil, err
 			}
-			vctx.Store(e.Name, v)
+			vctx.store(e.Name, v)
 			return v, nil
 		default:
 			log.Fatalf("Unhandled type for LazyVal: %T", lval)
@@ -459,29 +459,29 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		rctx := ChildCtx(ctx)
 		// Prepare context by storing lazy expressions of all fields.
 		for _, lv := range e.LetVars {
-			rctx.StoreExpr(lv.Name, lv.Val)
+			rctx.storeExpr(lv.Name, lv.Val)
 		}
 		for _, f := range e.Fields {
-			rctx.StoreExpr(f.Name, f.Val)
+			rctx.storeExpr(f.Name, f.Val)
 		}
 		// Evaluate all fields.
 		for _, lv := range e.LetVars {
-			rctx.SetActive(lv.Name)
+			rctx.setActive(lv.Name)
 			v, err := Eval(lv.Val, rctx)
 			if err != nil {
 				return nil, err
 			}
-			rctx.Store(lv.Name, v)
+			rctx.store(lv.Name, v)
 		}
 		rec := NewRec()
 		for _, f := range e.Fields {
-			rctx.SetActive(f.Name)
+			rctx.setActive(f.Name)
 			v, err := Eval(f.Val, rctx)
 			if err != nil {
 				return nil, err
 			}
-			rctx.Store(f.Name, v)
-			rec.SetField(f.Name, v)
+			rctx.store(f.Name, v)
+			rec.setField(f.Name, v)
 		}
 		return rec, nil
 	case *FieldAcc:
@@ -541,7 +541,7 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 	return nil, &EvalError{pos: expr.Pos(), msg: fmt.Sprintf("not implemented: %T", expr)}
 }
 
-func MergeRecords(x, y Val) (Val, error) {
+func mergeValues(x, y Val) (Val, error) {
 	u, ok := x.(*RecVal)
 	if !ok {
 		return nil, fmt.Errorf("cannot merge lhs of type %T", x)
@@ -551,37 +551,37 @@ func MergeRecords(x, y Val) (Val, error) {
 		return nil, fmt.Errorf("cannot merge rhs of type %T", y)
 	}
 	r := NewRec()
-	if err := MergeRecVal(u, v, r); err != nil {
+	if err := mergeRecVal(u, v, r); err != nil {
 		return nil, err
 	}
 	return r, nil
 }
 
-func MergeRecVal(x, y, r *RecVal) error {
+func mergeRecVal(x, y, r *RecVal) error {
 	// Copy fields only in x.
 	for f, v := range x.Fields {
 		if _, ok := y.Fields[f]; !ok {
-			r.SetField(f, v)
+			r.setField(f, v)
 		}
 	}
 	// Copy fields only in y and merge common fields.
 	for f, v := range y.Fields {
 		if _, ok := x.Fields[f]; !ok {
 			// Unique field of y.
-			r.SetField(f, v)
+			r.setField(f, v)
 		} else {
 			// Common field.
 			if cy, ok := v.(*RecVal); !ok {
 				// y field is not a record, just take the value from y.
-				r.SetField(f, v)
+				r.setField(f, v)
 			} else if cx, ok := x.Fields[f].(*RecVal); ok {
 				// x's field is a record, too: recurse.
 				cr := NewRec()
-				r.SetField(f, cr)
-				MergeRecVal(cx, cy, cr)
+				r.setField(f, cr)
+				mergeRecVal(cx, cy, cr)
 			} else {
 				// x field is not a record, again just take the value from y.
-				r.SetField(f, v)
+				r.setField(f, v)
 			}
 		}
 	}
