@@ -3,12 +3,13 @@ package gokonfi
 import (
 	"fmt"
 	"log"
-	"strings"
+	"strconv"
 
 	"github.com/dnswlt/gokonfi/token"
 )
 
 type Val interface {
+	fmt.Stringer
 	Bool() bool // TODO: make this a regular function
 	valImpl()
 }
@@ -52,47 +53,7 @@ func ChildCtx(parent *Ctx) *Ctx {
 
 func GlobalCtx() *Ctx {
 	ctx := NewCtx()
-	// Built-in functions.
-	builtins := []*NativeFuncVal{
-		{
-			Name:  "len",
-			Arity: 1,
-			F: func(args []Val) (Val, error) {
-				switch arg := args[0].(type) {
-				case StringVal:
-					return IntVal(len(arg)), nil
-				case *RecVal:
-					return IntVal(len(arg.Fields)), nil
-				}
-				return nil, fmt.Errorf("invalid type for len: %T", args[0])
-			},
-		},
-		{
-			Name:  "contains",
-			Arity: 2,
-			F: func(args []Val) (Val, error) {
-				switch s := args[0].(type) {
-				case StringVal:
-					if substr, ok := args[1].(StringVal); ok {
-						return BoolVal(strings.Contains(string(s), string(substr))), nil
-					}
-					return nil, fmt.Errorf("invalid type for arg #2 of contains: %T", args[1])
-				}
-				return nil, fmt.Errorf("invalid argument types for contains: (%T, %T)", args[0], args[1])
-			},
-		},
-		{
-			Name:  "cond",
-			Arity: 3,
-			F: func(args []Val) (Val, error) {
-				if args[0].Bool() {
-					return args[1], nil
-				}
-				return args[2], nil
-			},
-		},
-	}
-	for _, builtin := range builtins {
+	for _, builtin := range builtinFunctions {
 		ctx.Store(builtin.Name, builtin)
 	}
 	return ctx
@@ -166,7 +127,8 @@ type FuncExprVal struct {
 }
 
 func (f *NativeFuncVal) Call(args []Val, ctx *Ctx) (Val, error) {
-	if len(args) != f.Arity {
+	// Negative arity means "accept any args".
+	if f.Arity >= 0 && len(args) != f.Arity {
 		return nil, fmt.Errorf("wrong number of arguments for %s: got %d want %d", f.Name, len(args), f.Arity)
 	}
 	return f.F(args)
@@ -182,14 +144,6 @@ func (f *FuncExprVal) Call(args []Val, ctx *Ctx) (Val, error) {
 		fctx.Store(p.Name, args[i])
 	}
 	return Eval(f.F.Body, fctx)
-}
-
-func (f *NativeFuncVal) String() string {
-	return fmt.Sprintf("<built-in %s>", f.Name)
-}
-
-func (f *FuncExprVal) String() string {
-	return fmt.Sprintf("<func @%d:%d>", f.F.Pos(), f.F.End())
 }
 
 func (v IntVal) valImpl()        {}
@@ -224,6 +178,32 @@ func (r *NativeFuncVal) Bool() bool {
 }
 func (r *FuncExprVal) Bool() bool {
 	return true
+}
+
+func (x IntVal) String() string {
+	return strconv.FormatInt(int64(x), 10)
+}
+func (v DoubleVal) String() string {
+	return strconv.FormatFloat(float64(v), 'f', -1, 64)
+}
+func (b BoolVal) String() string {
+	return strconv.FormatBool(bool(b))
+}
+func (s StringVal) String() string {
+	return string(s)
+}
+func (s NilVal) String() string {
+	return "nil"
+}
+func (r *RecVal) String() string {
+	return "<rec>"
+}
+func (f *NativeFuncVal) String() string {
+	return fmt.Sprintf("<builtin %s>", f.Name)
+}
+
+func (f *FuncExprVal) String() string {
+	return fmt.Sprintf("<func @%d:%d>", f.F.Pos(), f.F.End())
 }
 
 // Binary operations on Val.

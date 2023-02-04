@@ -1,0 +1,22 @@
+{
+    let x: 1
+    let y: 2
+    let fib(n): if n <= 1 then 1 else fib(n-1) + fib(n-2)
+    z: fib(6)
+    w: {
+        expr: 'fib(25)'
+        val: fib(25)
+    }
+    u: {
+        expr: "len('a' + 'bc')"
+        val: len('a' + 'bc')
+    }
+    a: {
+        x: 27729
+    }
+    // n: "/path/to/${a.x}"
+    n_0: format("/path/to/%d", a.x)
+    n_1: "/path/to/" + str(a.x) + ""
+
+    rec_str: str({})
+}
