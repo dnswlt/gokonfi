@@ -264,23 +264,24 @@ func TestEvalErrors(t *testing.T) {
 		{input: "{let f: 'a' y: f(0) }", want: "not callable"},
 		{input: "{x: y y: x}", want: "Cyclic"},
 		{input: "{x: { a: b b: y.c } y: { c: x.a } }", want: "Cyclic"},
-		// TODO: These should be EvalErrors, but are not:
 		{input: "'a' + 3", want: "incompatible types"},
 		{input: "1 + 1.0", want: "incompatible types"},
 		{input: "(func (x) {x}) + 3", want: "incompatible types"},
 		{input: "-'a'", want: "incompatible type"},
 	}
 	for i, test := range tests {
-		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
 			e, err := parse(test.input)
 			if err != nil {
 				t.Fatalf("Cannot parse expression: %s", err)
 			}
 			got, err := Eval(e, GlobalCtx())
 			if err == nil {
-				t.Errorf("Expected error, but got: %s", got)
-			} else if !strings.Contains(err.Error(), test.want) {
-				t.Errorf("Got %v, wanted it to contain '%v'", err, test.want)
+				t.Errorf("Want error, got: %s", got)
+			} else if evalErr, ok := err.(*EvalError); !ok {
+				t.Errorf("Want EvalError, got %T", err)
+			} else if !strings.Contains(evalErr.msg, test.want) {
+				t.Errorf("Got '%s', wanted it to contain '%v'", err, test.want)
 			}
 		})
 	}

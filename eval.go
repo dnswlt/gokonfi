@@ -349,6 +349,50 @@ func UnaryNot(x Val) (Val, error) {
 	return BoolVal(!x.Bool()), nil
 }
 
+func UnaryOp(x Val, op token.TokenType) (Val, error) {
+	switch op {
+	case token.Minus:
+		return UnaryMinus(x)
+	case token.Not:
+		return UnaryNot(x)
+	}
+	return nil, fmt.Errorf("invalid unary operator '%v'", op)
+}
+
+func BinaryOp(x, y Val, op token.TokenType) (Val, error) {
+	switch op {
+	case token.Plus:
+		return Plus(x, y)
+	case token.Minus:
+		return Minus(x, y)
+	case token.Times:
+		return Times(x, y)
+	case token.Div:
+		return Div(x, y)
+	case token.Modulo:
+		return Modulo(x, y)
+	case token.LogicalAnd:
+		return LogicalAnd(x, y)
+	case token.LogicalOr:
+		return LogicalOr(x, y)
+	case token.Equal:
+		return Equal(x, y)
+	case token.NotEqual:
+		return NotEqual(x, y)
+	case token.LessThan:
+		return LessThan(x, y)
+	case token.LessEq:
+		return LessEq(x, y)
+	case token.GreaterThan:
+		return GreaterThan(x, y)
+	case token.GreaterEq:
+		return GreaterEq(x, y)
+	case token.Merge:
+		return MergeRecords(x, y)
+	}
+	return nil, fmt.Errorf("invalid binary operator '%v'", op)
+}
+
 func Eval(expr Expr, ctx *Ctx) (Val, error) {
 	switch e := expr.(type) {
 	case *IntLiteral:
@@ -366,12 +410,11 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		if err != nil {
 			return nil, err
 		}
-		switch e.Op {
-		case token.Minus:
-			return UnaryMinus(x)
-		case token.Not:
-			return UnaryNot(x)
+		r, err := UnaryOp(x, e.Op)
+		if err != nil {
+			return nil, &EvalError{pos: e.Pos(), msg: err.Error()}
 		}
+		return r, nil
 	case *BinaryExpr:
 		x, err := Eval(e.X, ctx)
 		if err != nil {
@@ -381,37 +424,11 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		if err != nil {
 			return nil, err
 		}
-		switch e.Op {
-		case token.Plus:
-			return Plus(x, y)
-		case token.Minus:
-			return Minus(x, y)
-		case token.Times:
-			return Times(x, y)
-		case token.Div:
-			return Div(x, y)
-		case token.Modulo:
-			return Modulo(x, y)
-		case token.LogicalAnd:
-			return LogicalAnd(x, y)
-		case token.LogicalOr:
-			return LogicalOr(x, y)
-		case token.Equal:
-			return Equal(x, y)
-		case token.NotEqual:
-			return NotEqual(x, y)
-		case token.LessThan:
-			return LessThan(x, y)
-		case token.LessEq:
-			return LessEq(x, y)
-		case token.GreaterThan:
-			return GreaterThan(x, y)
-		case token.GreaterEq:
-			return GreaterEq(x, y)
-		case token.Merge:
-			return MergeRecords(x, y)
+		r, err := BinaryOp(x, y, e.Op)
+		if err != nil {
+			return nil, &EvalError{pos: e.Pos(), msg: err.Error()}
 		}
-		return nil, &EvalError{pos: e.OpPos, msg: fmt.Sprintf("invalid binary operator: %s", e.Op)}
+		return r, nil
 	case *VarExpr:
 		lval, vctx := ctx.Lookup(e.Name)
 		if lval == nil {
