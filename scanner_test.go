@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/dnswlt/gokonfi/token"
 	"github.com/google/go-cmp/cmp"
@@ -360,19 +361,22 @@ func TestScanFormatStringValue(t *testing.T) {
 
 func TestScanErrors(t *testing.T) {
 	tests := []struct {
-		input string
-		want  string
+		input    string
+		want     string
+		wantRune rune
 	}{
-		{input: "$", want: "invalid lexeme"},
-		{input: "\\", want: "invalid lexeme"},
-		{input: `"foo`, want: "end of input"},
-		{input: `123'000`, want: "end of input"},
+		{input: "$", want: "invalid lexeme", wantRune: '$'},
+		{input: "a$", want: "invalid lexeme", wantRune: '$'},
+		{input: "123\\", want: "invalid lexeme", wantRune: '\\'},
+		{input: "1\n2\r\n#", want: "invalid lexeme", wantRune: '#'},
+		{input: `"foo`, want: "end of input", wantRune: 0},
+		{input: `123'000`, want: "end of input", wantRune: 0},
 		// You cannot have \ nor the format string delimiter (here: ") anywhere inside the format string.
-		{input: `"${ '\"' }"`, want: "backslash"},
-		{input: `"${ '"' }"`, want: "end of string"},
+		{input: `"${ '\"' }"`, want: "backslash", wantRune: '\\'},
+		{input: `"${ '"' }"`, want: "end of string", wantRune: '"'},
 		// Format strings cannot contain newlines.
-		{input: "\"${ \n }\"", want: "newline"},
-		{input: "\"${ \r }\"", want: "newline"},
+		{input: "\"${ \n }\"", want: "newline", wantRune: '\n'},
+		{input: "\"${ \r }\"", want: "newline", wantRune: '\r'},
 	}
 	for i, test := range tests {
 		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
@@ -380,9 +384,20 @@ func TestScanErrors(t *testing.T) {
 			if err == nil {
 				t.Fatalf("expected error, got %v", toks)
 			}
-			got := err.Error()
-			if !strings.Contains(got, test.want) {
-				t.Errorf("Want err \"%s\", got \"%s\"", test.want, got)
+			gotErr, ok := err.(*ScanError)
+			if !ok {
+				t.Fatalf("expected ScanError, got %v", err)
+			}
+			if !strings.Contains(gotErr.msg, test.want) {
+				t.Errorf("want err \"%s\", got \"%s\"", test.want, gotErr.msg)
+			}
+			gotPos := int(gotErr.Pos())
+			var gotRune rune = 0
+			if gotPos < len(test.input) {
+				gotRune, _ = utf8.DecodeRuneInString(test.input[gotPos:])
+			}
+			if gotRune != test.wantRune {
+				t.Errorf("want error at character `%c`, got it at `%c` (@%d)", test.wantRune, gotRune, gotErr.Pos())
 			}
 		})
 	}

@@ -384,14 +384,15 @@ func (s *Scanner) skipFormatStringExpr(delim rune) error {
 	depth := 0
 	inString := false
 	for !s.AtEnd() {
+		pos := s.pos
 		r := s.advance()
 		switch r {
 		case delim:
-			return s.failat(s.pos, "end of string in interpolated expression")
+			return s.failat(pos, "end of string in interpolated expression")
 		case '\n', '\r':
-			return s.failat(s.pos, "newline in interpolated expression")
+			return s.failat(pos, "newline in interpolated expression")
 		case '\\':
-			return s.failat(s.pos, "interpolated expression cannot contain a backslash")
+			return s.failat(pos, "interpolated expression cannot contain a backslash")
 		case '\'', '"':
 			// One of these is delim, so we only end up here for the other string delimiter,
 			// which can be used to delimit string literals inside the interpolated expression.
