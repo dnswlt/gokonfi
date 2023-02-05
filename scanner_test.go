@@ -1,9 +1,11 @@
 package gokonfi
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/dnswlt/gokonfi/token"
+	"github.com/google/go-cmp/cmp"
 )
 
 func compareTokenTypes(t *testing.T, actual, expected []token.TokenType) {
@@ -43,6 +45,7 @@ func TestScanOperators(t *testing.T) {
 		{op: "-", want: token.Minus},
 		{op: "*", want: token.Times},
 		{op: "/", want: token.Div},
+		{op: "@", want: token.Merge},
 		{op: ".", want: token.Dot},
 		{op: "!", want: token.Not},
 		{op: ":", want: token.Colon},
@@ -205,6 +208,10 @@ func TestScanKeywords(t *testing.T) {
 	for _, td := range []TestData{
 		{"let", token.Let},
 		{"func", token.Func},
+		{"template", token.Template},
+		{"if", token.If},
+		{"then", token.Then},
+		{"else", token.Else},
 	} {
 		s := NewScanner(td.input)
 		tok, err := s.NextToken()
@@ -231,6 +238,9 @@ func TestScanOnelineString(t *testing.T) {
 	inputs := []TestData{
 		{`"foo's bar"`, "foo's bar"},
 		{`''`, ""},
+		{`'Dollar $ is OK'`, "Dollar $ is OK"},
+		{`'Must escape \${}'`, "Must escape ${}"},
+		{`'{} is OK'`, "{} is OK"},
 		{`'Say "hi"'`, "Say \"hi\""},
 		{`"a\nb\tc\\\n\r\"\'"`, "a\nb\tc\\\n\r\"'"},
 	}
@@ -249,5 +259,97 @@ func TestScanOnelineString(t *testing.T) {
 		if tok.Val != td.expected {
 			t.Fatalf("Expected %s as Val, got %s", td.expected, tok.Val)
 		}
+	}
+}
+
+func TestScanFormatString(t *testing.T) {
+
+	tests := []struct {
+		input          string
+		expectedTokens int
+	}{
+		{`"${a}"`, 1},
+		{`"${a} ${b}"`, 3},
+		{`" ${a} ${b} ${c} "`, 7},
+	}
+	for i, test := range tests {
+		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
+			s := NewScanner(test.input)
+			tok, err := s.NextToken()
+			if err != nil {
+				t.Fatalf("Error scanning identifier: %s", err)
+			}
+			if !s.AtEnd() {
+				t.Errorf("Expected to be at end. Remaining substring: %s", s.rem())
+			}
+			if tok.Typ != token.FormatStrLiteral {
+				t.Fatalf("Expected FormatStrLiteral token, got %s", tok.Typ)
+			}
+			if tok.Val != "" {
+				t.Errorf("Expected empty Val, got %s", tok.Val)
+			}
+			got := len(tok.Fmt.Values)
+			if got != test.expectedTokens {
+				t.Errorf("Expected %d tokens, got %d", test.expectedTokens, got)
+			}
+		})
+	}
+}
+
+func TestScanFormatStringValue(t *testing.T) {
+	const (
+		tId   = token.Ident
+		tPlus = token.Plus
+		tStr  = token.StrLiteral
+		tInt  = token.IntLiteral
+		tEoi  = token.EndOfInput
+		tLb   = token.LeftBrace
+		tRb   = token.RightBrace
+		tCol  = token.Colon
+	)
+	tests := []struct {
+		input     string
+		wantIndex int               // Index at which we expect the FormattedValue
+		wantTypes []token.TokenType // wanted token types, excluding the mandatory EndOfInput
+	}{
+		{input: `"alpha ${a+b}"`, wantIndex: 1, wantTypes: []token.TokenType{tId, tPlus, tId}},
+		{input: `"${'a'}"`, wantIndex: 0, wantTypes: []token.TokenType{tStr}},
+		{input: `"${1}"`, wantIndex: 0, wantTypes: []token.TokenType{tInt}},
+		{input: `"/path/to/${'glory'}"`, wantIndex: 1, wantTypes: []token.TokenType{tStr}},
+		{input: `'${"a"}'`, wantIndex: 0, wantTypes: []token.TokenType{tStr}},
+		{input: `"${{a: 1}}"`, wantIndex: 0, wantTypes: []token.TokenType{tLb, tId, tCol, tInt, tRb}},
+		{input: `"${'{'}"`, wantIndex: 0, wantTypes: []token.TokenType{tStr}},
+	}
+	for i, test := range tests {
+		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
+			s := NewScanner(test.input)
+			tok, err := s.NextToken()
+			if err != nil {
+				t.Fatalf("Error scanning input: %s", err)
+			}
+			if tok.Typ != token.FormatStrLiteral {
+				t.Fatalf("Want FormatStrLiteral, got %s", tok.Typ)
+			}
+			if tok.Fmt == nil {
+				t.Fatalf(".Fmt is nil")
+			}
+			if len(tok.Fmt.Values) <= test.wantIndex {
+				t.Fatalf("Want FormattedValue at index %d, but only have %d values.", test.wantIndex, len(tok.Fmt.Values))
+			}
+			got, ok := tok.Fmt.Values[test.wantIndex].(token.FormattedValue)
+			if !ok {
+				t.Fatalf("Want FormattedValue, got %T", tok.Fmt.Values[test.wantIndex])
+			}
+			gotTokenTypes := make([]token.TokenType, len(got.Tokens))
+			for i, tok := range got.Tokens {
+				gotTokenTypes[i] = tok.Typ
+			}
+			// Every token sequence in an interpolated expression should end with EndOfInput,
+			// since that is what the parser uses to detect its own end of tokens.
+			test.wantTypes = append(test.wantTypes, tEoi)
+			if diff := cmp.Diff(test.wantTypes, gotTokenTypes); diff != "" {
+				t.Fatalf("FormattedValue.Token mismatch (-want +got):\n%s", diff)
+			}
+		})
 	}
 }

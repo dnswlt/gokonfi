@@ -2,6 +2,7 @@ package gokonfi
 
 import (
 	"fmt"
+	"log"
 	"strconv"
 
 	"github.com/dnswlt/gokonfi/token"
@@ -264,7 +265,11 @@ func (p *Parser) advance() token.Token {
 	return p.previous()
 }
 
+// previous returns the Token most recently returned by advance.
 func (p *Parser) previous() token.Token {
+	if p.current == 0 {
+		return token.Token{}
+	}
 	return p.tokens[p.current-1]
 }
 
@@ -291,6 +296,10 @@ func (p *Parser) expect(tokenType token.TokenType, context string) error {
 				tokenType, t.Val, t.Typ, context)}
 	}
 	return nil
+}
+
+func (p *Parser) fail(msg string, fmtArgs ...any) error {
+	return &ParseError{tok: p.peek(), msg: fmt.Sprintf(msg, fmtArgs...)}
 }
 
 // AtEnd returns true if the parser has processed all tokens.
@@ -541,6 +550,43 @@ func (p *Parser) operand() (Expr, error) {
 	case p.match(token.StrLiteral):
 		t := p.previous()
 		return &StrLiteral{Val: t.Val, LiteralPos: LiteralPos{t.Pos, t.End}}, nil
+	case p.match(token.FormatStrLiteral):
+		t := p.previous()
+		if t.Fmt == nil || len(t.Fmt.Values) == 0 {
+			log.Fatalf("empty .Fmt in FormatStrLiteral at %d", t.Pos)
+		}
+		// Format strings are explicitly desugared in the AST:
+		// "prefix${expr}suffix" ==> "prefix" + str(expr) + "suffix"
+		plusArgs := make([]Expr, len(t.Fmt.Values))
+		for i, fmtValue := range t.Fmt.Values {
+			switch v := fmtValue.(type) {
+			case token.FormatStrPart:
+				plusArgs[i] = &StrLiteral{Val: v.Val, LiteralPos: LiteralPos{v.Pos, v.End}}
+			case token.FormattedValue:
+				if len(v.Tokens) == 0 {
+					// Interpret ${} as an empty string.
+					plusArgs[i] = &StrLiteral{Val: "", LiteralPos: LiteralPos{v.Pos, v.End}}
+					continue
+				}
+				cp := NewParser(v.Tokens)
+				fe, err := cp.Expression()
+				if err != nil {
+					return nil, err
+				}
+				if !cp.AtEnd() {
+					return nil, &ParseError{tok: cp.peek(), msg: "remaining tokens in interpolated expression"}
+				}
+				plusArgs[i] =
+					&CallExpr{
+						Func: &VarExpr{Name: "str", NamePos: v.Pos, NameEnd: v.Pos},
+						Args: []Expr{fe}, ArgsEnd: v.End}
+			}
+		}
+		fmtExpr := plusArgs[0]
+		for _, plusArg := range plusArgs[1:] {
+			fmtExpr = &BinaryExpr{X: fmtExpr, Y: plusArg, Op: token.Plus, OpPos: plusArg.Pos()}
+		}
+		return fmtExpr, nil
 	case p.match(token.NilLiteral):
 		t := p.previous()
 		return &NilLiteral{LiteralPos: LiteralPos{t.Pos, t.End}}, nil
@@ -598,12 +644,12 @@ func (p *Parser) operand() (Expr, error) {
 		}
 		return &FuncExpr{Params: params, FuncPos: funcPos, FuncEnd: p.previous().End, Body: body}, nil
 	}
-	return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("unexpected token type %s for primary expression", p.peek().Typ)}
+	return nil, p.fail("unexpected token type %s for primary expression", p.peek().Typ)
 }
 
 func (p *Parser) record() (Expr, error) {
 	if !p.match(token.LeftBrace) {
-		return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("expected '{' token to parse record, got %s", p.peek().Val)}
+		return nil, p.fail("expected '{' token to parse record, got %s", p.peek().Val)
 	}
 	recPos := p.previous().Pos
 	letVars := make(map[string]LetVar)
@@ -633,7 +679,7 @@ func (p *Parser) record() (Expr, error) {
 			fields[f.Name] = *f
 		}
 	}
-	return nil, &ParseError{tok: p.previous(), msg: "reached end of input while parsing record"}
+	return nil, p.fail("reached end of input while parsing record")
 }
 
 // Can be one of

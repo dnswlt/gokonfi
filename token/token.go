@@ -6,11 +6,12 @@ type TokenType int32
 const (
 	Unspecified TokenType = iota
 	// Literals
-	NilLiteral    // nil
-	BoolLiteral   // true false
-	IntLiteral    // 0 1 2
-	DoubleLiteral // 0. 1.2 3e-4
-	StrLiteral    // "foo" 'bar'
+	NilLiteral       // nil
+	BoolLiteral      // true false
+	IntLiteral       // 0 1 2
+	DoubleLiteral    // 0. 1.2 3e-4
+	StrLiteral       // "foo" 'bar'
+	FormatStrLiteral // "/path/to/${heaven}"
 	// Operators
 	Plus        // +
 	Minus       // -
@@ -61,10 +62,36 @@ type Token struct {
 	Pos Pos
 	End Pos
 	Val string
+	Fmt *FormatStr
 }
 
 type Pos int
 
 type Poser interface {
 	Pos() Pos
+}
+
+// Types related to format strings.
+
+type FormatStrPart struct {
+	Val string
+	Pos Pos
+	End Pos
+}
+type FormattedValue struct {
+	Tokens []Token
+	Pos    Pos
+	End    Pos
+}
+
+// FormatStrValue is a marker interface for types that can be part of a format string.
+type FormatStrValue interface {
+	formatStrValueImpl()
+}
+
+func (FormattedValue) formatStrValueImpl() {}
+func (FormatStrPart) formatStrValueImpl()  {}
+
+type FormatStr struct {
+	Values []FormatStrValue
 }

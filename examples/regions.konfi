@@ -8,6 +8,7 @@
             num_tasks: 10
             public: true
         } @ params
+        region: p.region
         url: format("http://example.com/%s/service", p.region)
         task_config: {
             num_tasks: p.num_tasks

@@ -42,6 +42,41 @@ func TestEvalArithmeticExpr(t *testing.T) {
 	}
 }
 
+func TestEvalFormatString(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{input: `"/path/to/${'glory'}"`, want: "/path/to/glory"},
+		{input: `"1 ${2} 3"`, want: "1 2 3"},
+		{input: `"1 ${ 2 } 3"`, want: "1 2 3"},
+		{input: `{let a: { b: 1 } r: "a.b=${a.b}"}.r`, want: "a.b=1"},
+		{input: `{let f(x): x + 1 r: "x=${f(1)}"}.r`, want: "x=2"},
+		{input: `"${'a' + 'b'}"`, want: "ab"},
+		{input: `"$foo ${'bar'}"`, want: "$foo bar"},
+		{input: `"${ {a: {b: 3} }.a.b }"`, want: "3"},
+	}
+	for i, test := range tests {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			e, err := parse(test.input)
+			if err != nil {
+				t.Fatalf("Cannot parse expression: %s", err)
+			}
+			v, err := Eval(e, GlobalCtx())
+			if err != nil {
+				t.Fatalf("Failed to evaluate: %s", err)
+			}
+			got, ok := v.(StringVal)
+			if !ok {
+				t.Fatalf("Expected StringVal, got %T", v)
+			}
+			if string(got) != test.want {
+				t.Errorf("Want: %s, got: %s", test.want, got)
+			}
+		})
+	}
+}
+
 func TestEvalComparisonExpr(t *testing.T) {
 	tests := []struct {
 		input string
@@ -197,6 +232,7 @@ func TestEvalBuiltins(t *testing.T) {
 		input string
 		want  Val
 	}{
+		{input: "str(1)", want: StringVal("1")},
 		{input: "len('')", want: IntVal(0)},
 		{input: "len('foo' + 'bar')", want: IntVal(6)},
 		{input: "len({a: 1 b: 2})", want: IntVal(2)},

@@ -12,18 +12,7 @@ import (
 
 func scanTokens(input string) ([]token.Token, error) {
 	s := NewScanner(input)
-	r := []token.Token{}
-	for {
-		t, err := s.NextToken()
-		if err != nil {
-			return nil, err
-		}
-		r = append(r, t)
-		if t.Typ == token.EndOfInput {
-			break
-		}
-	}
-	return r, nil
+	return s.ScanAll()
 }
 
 func parse(input string) (Expr, error) {
@@ -68,6 +57,8 @@ func TestParseTopLevelExpr(t *testing.T) {
 		{name: "cond", input: "if 1 == 2 then 'foo' else 'bar'", want: (*ConditionalExpr)(nil)},
 		{name: "merge", input: "{x: 1} @ {y: 2}", want: (*BinaryExpr)(nil)},
 		{name: "list", input: "[1, 2, 3]", want: (*ListExpr)(nil)},
+		// Format strings are desugared by the parser, so expect a str call:
+		{name: "fstr", input: `"${1 + 2}"`, want: (*CallExpr)(nil)},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -75,7 +66,6 @@ func TestParseTopLevelExpr(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Could not parse expression: %s", err)
 			}
-
 			if reflect.TypeOf(e) != reflect.TypeOf(test.want) {
 				t.Fatalf("Expected expression of type %T, got type %T", test.want, e)
 			}
@@ -160,11 +150,20 @@ func fld(name string, val Expr) *RecField {
 func letv(name string, val Expr) *LetVar {
 	return &LetVar{Name: name, Val: val}
 }
-func intval(i int64) *IntLiteral {
+func eint(i int64) *IntLiteral {
 	return &IntLiteral{Val: i}
 }
-func strval(s string) *StrLiteral {
+func estr(s string) *StrLiteral {
 	return &StrLiteral{Val: s}
+}
+func ecall(name string, args ...Expr) Expr {
+	return &CallExpr{Func: &VarExpr{Name: name}, Args: args}
+}
+func binexpr(x Expr, op token.TokenType, y Expr) Expr {
+	return &BinaryExpr{X: x, Y: y, Op: op}
+}
+func eplus(x, y Expr) Expr {
+	return binexpr(x, token.Plus, y)
 }
 
 func TestParseRecordExpr(t *testing.T) {
@@ -182,9 +181,9 @@ func TestParseRecordExpr(t *testing.T) {
 					w: 0
 				}
 			}`,
-			want: rec(fld("x", intval(1)),
-				fld("y", strval("a")),
-				fld("z", rec(fld("w", intval(0)))))},
+			want: rec(fld("x", eint(1)),
+				fld("y", estr("a")),
+				fld("z", rec(fld("w", eint(0)))))},
 		{
 			name: "let vars",
 			input: `{
@@ -194,10 +193,10 @@ func TestParseRecordExpr(t *testing.T) {
 			}`,
 			want: reclet(
 				[]*LetVar{
-					letv("x", intval(1)),
-					letv("y", intval(2))},
+					letv("x", eint(1)),
+					letv("y", eint(2))},
 				[]*RecField{
-					fld("z", intval(3))})},
+					fld("z", eint(3))})},
 	}
 	// Ignore token positions when comparing Exprs.
 	opts := []cmp.Option{
@@ -211,6 +210,46 @@ func TestParseRecordExpr(t *testing.T) {
 			}
 			p := NewParser(ts)
 			got, err := p.Expression()
+			if err != nil {
+				t.Fatalf("Could not parse expression: %s", err)
+			}
+			if diff := cmp.Diff(test.want, got, opts...); diff != "" {
+				t.Fatalf("Record mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestParseFormatString(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  Expr
+	}{
+		{
+			name:  "simple",
+			input: `"${0}"`,
+			want:  ecall("str", eint(0)),
+		},
+		{
+			name:  "double",
+			input: `"${0}/${1}?"`,
+			want:  eplus(eplus(eplus(ecall("str", eint(0)), estr("/")), ecall("str", eint(1))), estr("?")),
+		},
+		{
+			name:  "nestedexpr",
+			input: `"${ 1 + len(2) }"`,
+			want:  ecall("str", eplus(eint(1), ecall("len", eint(2)))),
+		},
+	}
+	// Ignore token positions when comparing Exprs.
+	opts := []cmp.Option{
+		cmpopts.IgnoreTypes(token.Pos(0)),
+		cmpopts.IgnoreTypes(LiteralPos{}),
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := parse(test.input)
 			if err != nil {
 				t.Fatalf("Could not parse expression: %s", err)
 			}

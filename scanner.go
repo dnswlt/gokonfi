@@ -198,6 +198,25 @@ func (s *Scanner) NextToken() (token.Token, error) {
 	return s.token(token.EndOfInput)
 }
 
+// Scans all tokens in the scanner's remaining input.
+// If the scan is successful, the last token
+// will always be [token.EndOfInput]. If any errors occur duing the scan,
+// all tokens scanned so far are returned, together with an error.
+func (s *Scanner) ScanAll() ([]token.Token, error) {
+	r := []token.Token{}
+	for {
+		t, err := s.NextToken()
+		if err != nil {
+			return r, err
+		}
+		r = append(r, t)
+		if t.Typ == token.EndOfInput {
+			break
+		}
+	}
+	return r, nil
+}
+
 func (s *Scanner) eatline() {
 	for !s.AtEnd() {
 		c, sz := utf8.DecodeRuneInString(s.input[s.pos:])
@@ -262,13 +281,51 @@ func (s *Scanner) stringLit(delim rune) (token.Token, error) {
 }
 
 func (s *Scanner) stringOneline(delim rune) (token.Token, error) {
+	var parts []token.FormatStrValue
 	var b strings.Builder
 	for !s.AtEnd() {
 		r := s.advance()
 		if r == delim {
+			if len(parts) > 0 {
+				// We're in a format string.
+				if b.Len() > 0 {
+					// TODO: s.mark is not the right value for Pos.
+					parts = append(parts, token.FormatStrPart{Val: b.String(), Pos: token.Pos(s.mark), End: token.Pos(s.pos)})
+				}
+				return token.Token{
+					Typ: token.FormatStrLiteral,
+					Pos: token.Pos(s.mark),
+					End: token.Pos(s.pos),
+					Val: "",
+					Fmt: &token.FormatStr{Values: parts}}, nil
+			}
 			return s.tokenVal(token.StrLiteral, b.String())
 		} else if r == '\n' || r == '\r' {
 			return token.Token{}, &ScanError{pos: token.Pos(s.pos), msg: "Unexpected newline in string literal"}
+		} else if r == '$' && s.match('{') {
+			if b.Len() > 0 {
+				// TODO: s.mark is not the right Pos.
+				part := token.FormatStrPart{Val: b.String(), Pos: token.Pos(s.mark), End: token.Pos(s.pos)}
+				parts = append(parts, part)
+				b.Reset()
+			}
+			exprStart := s.pos
+			err := s.skipFormatStringExpr(delim)
+			if err != nil {
+				return token.Token{}, &ScanError{pos: token.Pos(s.pos), msg: fmt.Sprintf("error in format string: %s", err)}
+			}
+			exprEnd := s.pos
+			if exprStart+1 == exprEnd {
+				// Ignore empty interpolation ${}.
+				continue
+			}
+			cs := NewScanner(s.input[exprStart : exprEnd-1])
+			exprTokens, err := cs.ScanAll()
+			if err != nil {
+				return token.Token{}, err
+			}
+			part := token.FormattedValue{Tokens: exprTokens, Pos: token.Pos(exprStart), End: token.Pos(exprEnd)}
+			parts = append(parts, part)
 		} else if r == '\\' {
 			// TODO: this will yield a slightly confusing error message when we're at EOI.
 			r = s.advance()
@@ -279,12 +336,8 @@ func (s *Scanner) stringOneline(delim rune) (token.Token, error) {
 				b.WriteRune('\r')
 			case 't':
 				b.WriteRune('\t')
-			case '"':
-				b.WriteRune('"')
-			case '\'':
-				b.WriteRune('\'')
-			case '\\':
-				b.WriteRune('\\')
+			case '"', '\'', '\\', '$':
+				b.WriteRune(r)
 			default:
 				return token.Token{}, &ScanError{pos: token.Pos(s.pos), msg: fmt.Sprintf("Invalid escape character '%c'", r)}
 			}
@@ -294,6 +347,41 @@ func (s *Scanner) stringOneline(delim rune) (token.Token, error) {
 
 	}
 	return token.Token{}, &ScanError{pos: token.Pos(s.pos), msg: "End of input while scanning string literal"}
+}
+
+// Advances the scanner so it points at the character following the '}' that closes
+// the format string interpolated expression.
+//
+// When calling this method, s must point at the first character of the interpolated expression.
+func (s *Scanner) skipFormatStringExpr(delim rune) error {
+	depth := 0
+	inString := false
+	for !s.AtEnd() {
+		r := s.advance()
+		switch r {
+		case delim:
+			return fmt.Errorf("end of string in interpolated expression")
+		case '\n', '\r':
+			return fmt.Errorf("newline in interpolated expression")
+		case '\\':
+			return fmt.Errorf("interpolated expression cannot contain a backslash")
+		case '\'', '"':
+			// One of these is delim, so we only end up here for the other string delimiter,
+			// which can be used to delimit string literals inside the interpolated expression.
+			inString = !inString
+		case '}':
+			if depth == 0 && !inString {
+				// Reached end of interpolated expression
+				return nil
+			}
+			depth--
+		case '{':
+			if !inString {
+				depth++
+			}
+		}
+	}
+	return fmt.Errorf("end of input")
 }
 
 func (s *Scanner) stringMultiline(delim rune) (token.Token, error) {
