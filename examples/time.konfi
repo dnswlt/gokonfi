@@ -1,0 +1,18 @@
+// THIS IS JUST AN EXPLORATION. IT IS NOT A VALID KONFI(G).
+{
+    start_date: "2022-01-03"
+    // We can of course delegate the time/duration complexity into a library.
+    // But this does not read well and forces users to remember quite a few functions.
+    end_date_func: time.add(start_date, time.days(10))
+    // Nicer syntax does not make time calculations more expressive, but more readable.
+    end_date_type: start_date::date + 10::days
+
+    // If the number to be configured looks OK and easy to understand, just use that number:
+    timeout_seconds: 60
+    // This is a typical case where the one would write sth like "10 * 60 * 1000 * 1000"
+    // and add a comment like "// 10 minutes".
+    // Functional style makes the intent clear:
+    timeout_micros_func: time.as_micros(time.minutes(10))
+    // Type annotation style does, too:
+    timeout_micros: 10::minutes as micros
+}
