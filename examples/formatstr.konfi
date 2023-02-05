@@ -1,10 +1,16 @@
 {
     let map(f, xs): flatmap(func (x) { [f(x)] }, xs)
+    let fiba(a1, a2, k, n): if k == n then a2 else fiba(a2, a1+a2, k+1, n)
+    let fib(n): if n <= 1 then 1 else fiba(1, 1, 1, n)
+    let faca(a, n): if n <= 1 then a else faca(a*n, n-1)
+    let fac(n): faca(1, n)
+    let sum(n): n * (n + 1) / 2
 
     let template user(u) {
         username: u
         home: "/home/${u}"
         is_root: u == 'dw'
+        funny_numbers: "fib-${fib(len(u))}-fac-${fac(len(u))}-sum-${sum(len(u))}"
     }
     users: map(user, ['dw', 'joe', 'harry'])
 }
