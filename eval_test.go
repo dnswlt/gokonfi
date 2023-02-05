@@ -241,9 +241,19 @@ func TestEvalBuiltins(t *testing.T) {
 		{input: "len({let x: 0 y: x - 1})", want: IntVal(1)},
 		// contains
 		{input: "{let s: 'affe' let t: 'ff' r: contains(s, t)}.r", want: BoolVal(true)},
+		// cond
 		{input: "cond(1 == 2, 'insane', 'sane')", want: StringVal("sane")},
 		// Conditional nil field. For now, we don't delete fields that are nil.
 		{input: "{let enabled: false arg: cond(enabled, 'doSomething', nil)}.arg", want: NilVal{}},
+		// substr
+		{input: `substr("", 0, 0)`, want: StringVal("")},
+		{input: `substr("abc", 1, 2)`, want: StringVal("b")},
+		{input: `substr("abc", 0, 3)`, want: StringVal("abc")},
+		{input: `{s: "abc" r: substr(s, 0, len(s))}.r`, want: StringVal("abc")},
+		// Unicode: characters can be longer than one byte. Umlaut-u is 2 bytes:
+		{input: "substr('\u00fcber', 0, 2)", want: StringVal("\u00fc")},
+		// Of course, len behaves accordingly:
+		{input: "len('\u00fcber')", want: IntVal(5)},
 	}
 	for i, test := range tests {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {

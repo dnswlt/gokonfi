@@ -7,29 +7,29 @@ import (
 
 // Declaration of all built-in functions. Whatever we add here
 // becomes available in Konfi.
+//
+// Keep sorted alphabetically.
 var builtinFunctions = []*NativeFuncVal{
-	{Name: "len", Arity: 1, F: builtinLen},
-	{Name: "contains", Arity: 2, F: builtinContains},
 	{Name: "cond", Arity: 3, F: builtinCond},
-	{Name: "format", Arity: -1, F: builtinFormat},
-	{Name: "str", Arity: 1, F: builtinStr},
-	{Name: "isnil", Arity: 1, F: builtinIsnil},
+	{Name: "contains", Arity: 2, F: builtinContains},
 	{Name: "flatmap", Arity: 2, F: builtinFlatmap},
 	{Name: "fold", Arity: -1, F: builtinFold},
+	{Name: "format", Arity: -1, F: builtinFormat},
+	{Name: "isnil", Arity: 1, F: builtinIsnil},
+	{Name: "len", Arity: 1, F: builtinLen},
+	{Name: "str", Arity: 1, F: builtinStr},
+	{Name: "substr", Arity: 3, F: builtinSubstr},
 }
 
-func builtinLen(args []Val, ctx *Ctx) (Val, error) {
-	switch arg := args[0].(type) {
-	case StringVal:
-		return IntVal(len(arg)), nil
-	case *RecVal:
-		return IntVal(len(arg.Fields)), nil
-	case *ListVal:
-		return IntVal(len(arg.Elements)), nil
+// cond(b any, x any, y any) any
+func builtinCond(args []Val, ctx *Ctx) (Val, error) {
+	if args[0].Bool() {
+		return args[1], nil
 	}
-	return nil, fmt.Errorf("len: invalid type: %T", args[0])
+	return args[2], nil
 }
 
+// contains(s string, substr string) bool
 func builtinContains(args []Val, ctx *Ctx) (Val, error) {
 	switch s := args[0].(type) {
 	case StringVal:
@@ -41,41 +41,7 @@ func builtinContains(args []Val, ctx *Ctx) (Val, error) {
 	return nil, fmt.Errorf("contains: invalid argument types: (%T, %T)", args[0], args[1])
 }
 
-func builtinCond(args []Val, ctx *Ctx) (Val, error) {
-	if args[0].Bool() {
-		return args[1], nil
-	}
-	return args[2], nil
-}
-
-func builtinFormat(args []Val, ctx *Ctx) (Val, error) {
-	if len(args) == 0 {
-		return StringVal(""), nil
-	}
-	if len(args) == 1 {
-		return args[1], nil
-	}
-	format, ok := args[0].(StringVal)
-	if !ok {
-		return nil, fmt.Errorf("format: first argument must be a format string, got %T", args[0])
-	}
-	formatArgs := make([]any, len(args[1:]))
-	for i, arg := range args[1:] {
-		formatArgs[i] = arg
-	}
-	s := fmt.Sprintf(string(format), formatArgs...)
-	return StringVal(s), nil
-}
-
-func builtinStr(args []Val, ctx *Ctx) (Val, error) {
-	return StringVal(args[0].String()), nil
-}
-
-func builtinIsnil(args []Val, ctx *Ctx) (Val, error) {
-	_, ok := args[0].(NilVal)
-	return BoolVal(ok), nil
-}
-
+// flatmap(f func('a)[]'b, xs []'a) []'b
 func builtinFlatmap(args []Val, ctx *Ctx) (Val, error) {
 	f, ok := args[0].(CallableVal)
 	if !ok {
@@ -102,6 +68,8 @@ func builtinFlatmap(args []Val, ctx *Ctx) (Val, error) {
 	return &ListVal{Elements: result}, nil
 }
 
+// Three argument fold:
+// fold(f func('a, 'b)'a, accu 'a, xs []'b ) 'a
 func builtinFold(args []Val, ctx *Ctx) (Val, error) {
 	if len(args) != 3 && len(args) != 2 {
 		return nil, fmt.Errorf("fold: invalid number of arguments: %d", len(args))
@@ -128,6 +96,8 @@ func builtinFold(args []Val, ctx *Ctx) (Val, error) {
 	return accu, nil
 }
 
+// Two-argument fold:
+// fold(f func('b, 'b)'b, xs []'b ) 'b
 func builtinFold1(args []Val, ctx *Ctx) (Val, error) {
 	f, ok := args[0].(CallableVal)
 	if !ok {
@@ -149,4 +119,69 @@ func builtinFold1(args []Val, ctx *Ctx) (Val, error) {
 		accu = y
 	}
 	return accu, nil
+}
+
+// format(fmt string, args ...any) string
+func builtinFormat(args []Val, ctx *Ctx) (Val, error) {
+	if len(args) == 0 {
+		return StringVal(""), nil
+	}
+	if len(args) == 1 {
+		return args[1], nil
+	}
+	format, ok := args[0].(StringVal)
+	if !ok {
+		return nil, fmt.Errorf("format: first argument must be a format string, got %T", args[0])
+	}
+	formatArgs := make([]any, len(args[1:]))
+	for i, arg := range args[1:] {
+		formatArgs[i] = arg
+	}
+	s := fmt.Sprintf(string(format), formatArgs...)
+	return StringVal(s), nil
+}
+
+// isnil(x any) bool
+func builtinIsnil(args []Val, ctx *Ctx) (Val, error) {
+	_, ok := args[0].(NilVal)
+	return BoolVal(ok), nil
+}
+
+// len(x any) int
+func builtinLen(args []Val, ctx *Ctx) (Val, error) {
+	switch arg := args[0].(type) {
+	case StringVal:
+		return IntVal(len(arg)), nil
+	case *RecVal:
+		return IntVal(len(arg.Fields)), nil
+	case *ListVal:
+		return IntVal(len(arg.Elements)), nil
+	}
+	return nil, fmt.Errorf("len: invalid type: %T", args[0])
+}
+
+// str(x any) string
+func builtinStr(args []Val, ctx *Ctx) (Val, error) {
+	return StringVal(args[0].String()), nil
+}
+
+// substr(s string, start int, end int) string
+func builtinSubstr(args []Val, ctx *Ctx) (Val, error) {
+	switch s := args[0].(type) {
+	case StringVal:
+		start, ok := args[1].(IntVal)
+		if !ok {
+			return nil, fmt.Errorf("substr: 2nd argument must be an int, got %T", args[1])
+		}
+		end, ok := args[2].(IntVal)
+		if !ok {
+			return nil, fmt.Errorf("substr: 3nd argument must be an int, got %T", args[2])
+		}
+		if start < 0 || start > end || int64(end) > int64(len(s)) {
+			return nil, fmt.Errorf("substr: invalid start(%d)/end(%d) arguments for string of length %d",
+				start, end, len(s))
+		}
+		return StringVal(string(s)[start:end]), nil
+	}
+	return nil, fmt.Errorf("substr: invalid type: %T", args[0])
 }
