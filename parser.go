@@ -587,7 +587,7 @@ func (p *Parser) operand() (Expr, error) {
 			fmtExpr = &BinaryExpr{X: fmtExpr, Y: plusArg, Op: token.Plus, OpPos: plusArg.Pos()}
 		}
 		return fmtExpr, nil
-	case p.match(token.NilLiteral):
+	case p.match(token.Nil):
 		t := p.previous()
 		return &NilLiteral{LiteralPos: LiteralPos{t.Pos, t.End}}, nil
 	case p.match(token.Ident):

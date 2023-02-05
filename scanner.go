@@ -10,24 +10,6 @@ import (
 	"github.com/dnswlt/gokonfi/token"
 )
 
-// Scanner contains the full input and current scanning state.
-type Scanner struct {
-	input string
-	mark  int
-	pos   int
-}
-
-// Creates a new scanner from the given input.
-func NewScanner(input string) Scanner {
-	return Scanner{input: input, pos: 0}
-}
-
-// ScanError is the error type returned by calls to [Scanner.NextToken].
-type ScanError struct {
-	pos token.Pos
-	msg string
-}
-
 var (
 	keywords = map[string]token.TokenType{
 		"func":     token.Func,
@@ -38,19 +20,23 @@ var (
 		"else":     token.Else,
 		"true":     token.BoolLiteral,
 		"false":    token.BoolLiteral,
-		"nil":      token.NilLiteral,
+		"nil":      token.Nil,
 	}
-
+	// Used to extract integer and double literals.
 	numberRegexp = regexp.MustCompile(`^(?:\d+[eE][+-]?\d+|\d*\.\d+(?:[eE][+-]?\d+)?|\d+\.\d*(?:[eE][+-]?\d+)?|(\d+))`)
 )
 
-// Returns the position at which the ScanError occurred.
-func (s *ScanError) Pos() token.Pos {
-	return s.pos
+// Scanner contains the full input and the current scanning state.
+type Scanner struct {
+	input string
+	mark  int // Used to keep track of the start of multi-character tokens.
+	pos   int // Next position in input to be scanned.
+	off   int // Offset of input[0] in a broader context. Nonzero only for child scanners.
 }
 
-func (e *ScanError) Error() string {
-	return fmt.Sprintf("scanError: %s at position %d", e.msg, e.pos)
+// Creates a new scanner from the given input.
+func NewScanner(input string) *Scanner {
+	return &Scanner{input: input}
 }
 
 // AtEnd returns true if the scanner has processed its input entirely.
@@ -100,7 +86,49 @@ func (s *Scanner) token(typ token.TokenType) (token.Token, error) {
 }
 
 func (s *Scanner) tokenVal(typ token.TokenType, val string) (token.Token, error) {
-	return token.Token{Typ: typ, Pos: token.Pos(s.mark), End: token.Pos(s.pos), Val: val}, nil
+	return token.Token{Typ: typ, Pos: s.tmark(), End: s.tpos(), Val: val}, nil
+}
+
+// childScanner returns a new child Scanner that will process a substring of s.input
+// ranging from start to end (exclusive). The child scanner will have its offset set
+// to start, so the tokens it returns will have Pos values from start upwards, so that
+// their positions are meaningful in the context of the parent scanner's input.
+func (s *Scanner) childScanner(start, end int) *Scanner {
+	if end >= len(s.input) {
+		end = len(s.input)
+	}
+	return &Scanner{input: s.input[start:end], off: start}
+}
+
+func (s *Scanner) tpos() token.Pos {
+	return token.Pos(s.pos + s.off)
+}
+
+func (s *Scanner) tmark() token.Pos {
+	return token.Pos(s.mark + s.off)
+}
+
+func (s *Scanner) fail(format string, args ...any) error {
+	return s.failat(s.mark, format, args...)
+}
+
+func (s *Scanner) failat(pos int, format string, args ...any) error {
+	return &ScanError{pos: token.Pos(pos), msg: fmt.Sprintf(format, args...)}
+}
+
+// ScanError is the error type typically returned by calls to Scanner methods.
+type ScanError struct {
+	pos token.Pos
+	msg string
+}
+
+// Returns the position at which the ScanError occurred.
+func (s *ScanError) Pos() token.Pos {
+	return s.pos
+}
+
+func (e *ScanError) Error() string {
+	return fmt.Sprintf("scanError: %s at position %d", e.msg, e.pos)
 }
 
 // NextToken scans the next token in the input and advances the scanner state.
@@ -113,9 +141,8 @@ func (s *Scanner) NextToken() (token.Token, error) {
 		s.setMark()
 		r := s.advance()
 		if r == utf8.RuneError {
-			return token.Token{}, &ScanError{pos: token.Pos(s.mark), msg: "Invalid UTF-8 code point"}
+			return token.Token{}, s.fail("invalid UTF-8 code point")
 		}
-		// Advance scanner
 		// Check for identfier, which has too many possible first characters for a switch:
 		if r == '_' || unicode.IsLetter(r) {
 			return s.ident()
@@ -193,7 +220,7 @@ func (s *Scanner) NextToken() (token.Token, error) {
 			// Skip whitespace
 			continue
 		}
-		return token.Token{}, &ScanError{pos: token.Pos(s.mark), msg: fmt.Sprintf("Invalid lexeme '%c'", r)}
+		return token.Token{}, s.fail("invalid lexeme '%c'", r)
 	}
 	return s.token(token.EndOfInput)
 }
@@ -244,14 +271,14 @@ func (s *Scanner) ident() (token.Token, error) {
 		}
 		return s.token(typ)
 	}
-	return token.Token{}, &ScanError{pos: token.Pos(s.mark), msg: "Invalid identifier"}
+	return token.Token{}, s.fail("invalid identifier")
 }
 
 // Parses IntLiterals and DoubleLiterals.
 func (s *Scanner) number() (token.Token, error) {
 	ix := numberRegexp.FindStringSubmatchIndex(s.input[s.mark:])
 	if ix == nil {
-		return token.Token{}, &ScanError{pos: token.Pos(s.mark), msg: "Invalid double literal"}
+		return token.Token{}, s.fail("invalid double literal")
 	}
 	s.pos = s.mark + ix[1]
 	typ := token.IntLiteral
@@ -271,63 +298,63 @@ func (s *Scanner) stringLit(delim rune) (token.Token, error) {
 	case 1:
 		// Parse string contents
 		return s.stringOneline(delim)
-	case 2:
+	case 2, 6:
 		// Empty string
 		return s.tokenVal(token.StrLiteral, "")
 	case 3:
 		return s.stringMultiline(delim)
 	}
-	return token.Token{}, &ScanError{pos: token.Pos(s.mark), msg: "Invalid string literal"}
+	return token.Token{}, s.fail("invalid string literal")
 }
 
 func (s *Scanner) stringOneline(delim rune) (token.Token, error) {
-	var parts []token.FormatStrValue
+	var parts []token.FormatStrValue // Parts collected for a format string.
+	partPos := s.tpos()              // Start position of the current format string part.
 	var b strings.Builder
 	for !s.AtEnd() {
 		r := s.advance()
 		if r == delim {
+			// Reached the end of the string.
 			if len(parts) > 0 {
 				// We're in a format string.
 				if b.Len() > 0 {
-					// TODO: s.mark is not the right value for Pos.
-					parts = append(parts, token.FormatStrPart{Val: b.String(), Pos: token.Pos(s.mark), End: token.Pos(s.pos)})
+					parts = append(parts, token.FormatStrPart{Val: b.String(), Pos: partPos, End: s.tpos()})
 				}
 				return token.Token{
 					Typ: token.FormatStrLiteral,
-					Pos: token.Pos(s.mark),
-					End: token.Pos(s.pos),
-					Val: "",
+					Pos: s.tmark(),
+					End: s.tpos(),
+					Val: "", // format strings have all data in .Fmt.
 					Fmt: &token.FormatStr{Values: parts}}, nil
 			}
+			// Regular string.
 			return s.tokenVal(token.StrLiteral, b.String())
 		} else if r == '\n' || r == '\r' {
-			return token.Token{}, &ScanError{pos: token.Pos(s.pos), msg: "Unexpected newline in string literal"}
+			return token.Token{}, s.failat(s.pos, "unexpected newline in string literal")
 		} else if r == '$' && s.match('{') {
 			if b.Len() > 0 {
-				// TODO: s.mark is not the right Pos.
-				part := token.FormatStrPart{Val: b.String(), Pos: token.Pos(s.mark), End: token.Pos(s.pos)}
+				part := token.FormatStrPart{Val: b.String(), Pos: partPos, End: s.tpos()}
 				parts = append(parts, part)
 				b.Reset()
 			}
-			exprStart := s.pos
+			exprStart := s.pos // s.pos points at the first character inside the ${} (after '{').
 			err := s.skipFormatStringExpr(delim)
-			if err != nil {
-				return token.Token{}, &ScanError{pos: token.Pos(s.pos), msg: fmt.Sprintf("error in format string: %s", err)}
-			}
-			exprEnd := s.pos
-			if exprStart+1 == exprEnd {
-				// Ignore empty interpolation ${}.
-				continue
-			}
-			cs := NewScanner(s.input[exprStart : exprEnd-1])
-			exprTokens, err := cs.ScanAll()
 			if err != nil {
 				return token.Token{}, err
 			}
+			exprEnd := s.pos - 1 // s.pos points at the first character outside the ${} (after '}').
+			if exprStart == exprEnd {
+				// Ignore empty interpolation ${}.
+				continue
+			}
+			exprTokens, err := s.childScanner(exprStart, exprEnd).ScanAll()
+			if err != nil {
+				return token.Token{}, err
+			}
+			partPos = s.tpos()
 			part := token.FormattedValue{Tokens: exprTokens, Pos: token.Pos(exprStart), End: token.Pos(exprEnd)}
 			parts = append(parts, part)
 		} else if r == '\\' {
-			// TODO: this will yield a slightly confusing error message when we're at EOI.
 			r = s.advance()
 			switch r {
 			case 'n':
@@ -339,14 +366,14 @@ func (s *Scanner) stringOneline(delim rune) (token.Token, error) {
 			case '"', '\'', '\\', '$':
 				b.WriteRune(r)
 			default:
-				return token.Token{}, &ScanError{pos: token.Pos(s.pos), msg: fmt.Sprintf("Invalid escape character '%c'", r)}
+				return token.Token{}, s.failat(s.pos, "invalid escape character '%c'", r)
 			}
 		} else {
 			b.WriteRune(r)
 		}
 
 	}
-	return token.Token{}, &ScanError{pos: token.Pos(s.pos), msg: "End of input while scanning string literal"}
+	return token.Token{}, s.failat(s.pos, "end of input while scanning string literal")
 }
 
 // Advances the scanner so it points at the character following the '}' that closes
@@ -360,11 +387,11 @@ func (s *Scanner) skipFormatStringExpr(delim rune) error {
 		r := s.advance()
 		switch r {
 		case delim:
-			return fmt.Errorf("end of string in interpolated expression")
+			return s.failat(s.pos, "end of string in interpolated expression")
 		case '\n', '\r':
-			return fmt.Errorf("newline in interpolated expression")
+			return s.failat(s.pos, "newline in interpolated expression")
 		case '\\':
-			return fmt.Errorf("interpolated expression cannot contain a backslash")
+			return s.failat(s.pos, "interpolated expression cannot contain a backslash")
 		case '\'', '"':
 			// One of these is delim, so we only end up here for the other string delimiter,
 			// which can be used to delimit string literals inside the interpolated expression.
@@ -373,17 +400,18 @@ func (s *Scanner) skipFormatStringExpr(delim rune) error {
 			if depth == 0 && !inString {
 				// Reached end of interpolated expression
 				return nil
+			} else if !inString {
+				depth--
 			}
-			depth--
 		case '{':
 			if !inString {
 				depth++
 			}
 		}
 	}
-	return fmt.Errorf("end of input")
+	return s.fail("end of input")
 }
 
 func (s *Scanner) stringMultiline(delim rune) (token.Token, error) {
-	return token.Token{}, &ScanError{pos: token.Pos(s.mark), msg: "Multiline strings are not implemented yet"}
+	return token.Token{}, s.fail("multiline strings are not implemented yet")
 }

@@ -6,7 +6,7 @@ type TokenType int32
 const (
 	Unspecified TokenType = iota
 	// Literals
-	NilLiteral       // nil
+	Nil              // nil
 	BoolLiteral      // true false
 	IntLiteral       // 0 1 2
 	DoubleLiteral    // 0. 1.2 3e-4

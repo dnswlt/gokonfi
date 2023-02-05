@@ -2,6 +2,7 @@ package gokonfi
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/dnswlt/gokonfi/token"
@@ -212,6 +213,7 @@ func TestScanKeywords(t *testing.T) {
 		{"if", token.If},
 		{"then", token.Then},
 		{"else", token.Else},
+		{"nil", token.Nil},
 	} {
 		s := NewScanner(td.input)
 		tok, err := s.NextToken()
@@ -263,7 +265,6 @@ func TestScanOnelineString(t *testing.T) {
 }
 
 func TestScanFormatString(t *testing.T) {
-
 	tests := []struct {
 		input          string
 		expectedTokens int
@@ -271,6 +272,8 @@ func TestScanFormatString(t *testing.T) {
 		{`"${a}"`, 1},
 		{`"${a} ${b}"`, 3},
 		{`" ${a} ${b} ${c} "`, 7},
+		// Empty ${} is discarded, but yields a FormatStrLiteral nonetheless.
+		{`"foo${}bar"`, 2},
 	}
 	for i, test := range tests {
 		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
@@ -319,6 +322,7 @@ func TestScanFormatStringValue(t *testing.T) {
 		{input: `'${"a"}'`, wantIndex: 0, wantTypes: []token.TokenType{tStr}},
 		{input: `"${{a: 1}}"`, wantIndex: 0, wantTypes: []token.TokenType{tLb, tId, tCol, tInt, tRb}},
 		{input: `"${'{'}"`, wantIndex: 0, wantTypes: []token.TokenType{tStr}},
+		{input: `"${ '}' }"`, wantIndex: 0, wantTypes: []token.TokenType{tStr}},
 	}
 	for i, test := range tests {
 		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
@@ -349,6 +353,36 @@ func TestScanFormatStringValue(t *testing.T) {
 			test.wantTypes = append(test.wantTypes, tEoi)
 			if diff := cmp.Diff(test.wantTypes, gotTokenTypes); diff != "" {
 				t.Fatalf("FormattedValue.Token mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestScanErrors(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{input: "$", want: "invalid lexeme"},
+		{input: "\\", want: "invalid lexeme"},
+		{input: `"foo`, want: "end of input"},
+		{input: `123'000`, want: "end of input"},
+		// You cannot have \ nor the format string delimiter (here: ") anywhere inside the format string.
+		{input: `"${ '\"' }"`, want: "backslash"},
+		{input: `"${ '"' }"`, want: "end of string"},
+		// Format strings cannot contain newlines.
+		{input: "\"${ \n }\"", want: "newline"},
+		{input: "\"${ \r }\"", want: "newline"},
+	}
+	for i, test := range tests {
+		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
+			toks, err := NewScanner(test.input).ScanAll()
+			if err == nil {
+				t.Fatalf("expected error, got %v", toks)
+			}
+			got := err.Error()
+			if !strings.Contains(got, test.want) {
+				t.Errorf("Want err \"%s\", got \"%s\"", test.want, got)
 			}
 		})
 	}

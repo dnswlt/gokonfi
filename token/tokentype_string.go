@@ -9,7 +9,7 @@ func _() {
 	// Re-run the stringer command to generate them again.
 	var x [1]struct{}
 	_ = x[Unspecified-0]
-	_ = x[NilLiteral-1]
+	_ = x[Nil-1]
 	_ = x[BoolLiteral-2]
 	_ = x[IntLiteral-3]
 	_ = x[DoubleLiteral-4]
@@ -55,9 +55,9 @@ func _() {
 	_ = x[EndOfInput-44]
 }
 
-const _TokenType_name = "UnspecifiedNilLiteralBoolLiteralIntLiteralDoubleLiteralStrLiteralFormatStrLiteralPlusMinusTimesDivModuloEqualNotEqualLessThanLessEqGreaterThanGreaterEqLogicalAndLogicalOrBitwiseAndBitwiseOrBitwiseXorShiftLeftShiftRightDotNotComplementMergeCommaLeftParenRightParenLeftBraceRightBraceLeftSquareRightSquareColonIdentFuncLetTemplateIfThenElseEndOfInput"
+const _TokenType_name = "UnspecifiedNilBoolLiteralIntLiteralDoubleLiteralStrLiteralFormatStrLiteralPlusMinusTimesDivModuloEqualNotEqualLessThanLessEqGreaterThanGreaterEqLogicalAndLogicalOrBitwiseAndBitwiseOrBitwiseXorShiftLeftShiftRightDotNotComplementMergeCommaLeftParenRightParenLeftBraceRightBraceLeftSquareRightSquareColonIdentFuncLetTemplateIfThenElseEndOfInput"
 
-var _TokenType_index = [...]uint16{0, 11, 21, 32, 42, 55, 65, 81, 85, 90, 95, 98, 104, 109, 117, 125, 131, 142, 151, 161, 170, 180, 189, 199, 208, 218, 221, 224, 234, 239, 244, 253, 263, 272, 282, 292, 303, 308, 313, 317, 320, 328, 330, 334, 338, 348}
+var _TokenType_index = [...]uint16{0, 11, 14, 25, 35, 48, 58, 74, 78, 83, 88, 91, 97, 102, 110, 118, 124, 135, 144, 154, 163, 173, 182, 192, 201, 211, 214, 217, 227, 232, 237, 246, 256, 265, 275, 285, 296, 301, 306, 310, 313, 321, 323, 327, 331, 341}
 
 func (i TokenType) String() string {
 	if i < 0 || i >= TokenType(len(_TokenType_index)-1) {

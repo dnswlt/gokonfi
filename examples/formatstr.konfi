@@ -1,0 +1,10 @@
+{
+    let map(f, xs): flatmap(func (x) { [f(x)] }, xs)
+
+    let template user(u) {
+        username: u
+        home: "/home/${u}"
+        is_root: u == 'dw'
+    }
+    users: map(user, ['dw', 'joe', 'harry'])
+}
