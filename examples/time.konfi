@@ -14,5 +14,5 @@
     // Functional style makes the intent clear:
     timeout_micros_func: time.as_micros(time.minutes(10))
     // Type annotation style does, too:
-    timeout_micros: 10::minutes as micros
+    timeout_micros :: micros : 10::minutes
 }

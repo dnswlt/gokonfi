@@ -215,7 +215,9 @@ func (s *Scanner) NextToken() (token.Token, error) {
 				return s.token(token.LogicalOr)
 			}
 		case '"', '\'':
-			return s.stringLit(r)
+			return s.stringLiteral(r)
+		case '`':
+			return s.rawStringLiteral(r)
 		case ' ', '\t', '\n', '\r':
 			// Skip whitespace
 			continue
@@ -289,25 +291,26 @@ func (s *Scanner) number() (token.Token, error) {
 	return s.token(typ)
 }
 
-func (s *Scanner) stringLit(delim rune) (token.Token, error) {
-	ndelim := 1 // 1st delim was already parsed.
-	for !s.AtEnd() && s.match(delim) {
-		ndelim++
+// Scan a potentially multi-line raw string delimited by delim.
+// No escaping at all is performed and all characters except carriage return ('\r')
+// from the scanner's current position up to and not including the next delim
+// are returned. '\r' are dropped.
+func (s *Scanner) rawStringLiteral(delim rune) (token.Token, error) {
+	var b strings.Builder
+	for !s.AtEnd() {
+		r := s.advance()
+		if r == delim {
+			return s.tokenVal(token.StrLiteral, b.String())
+		}
+		if r == '\r' {
+			continue
+		}
+		b.WriteRune(r)
 	}
-	switch ndelim {
-	case 1:
-		// Parse string contents
-		return s.stringOneline(delim)
-	case 2, 6:
-		// Empty string
-		return s.tokenVal(token.StrLiteral, "")
-	case 3:
-		return s.stringMultiline(delim)
-	}
-	return token.Token{}, s.fail("invalid string literal")
+	return token.Token{}, s.failat(s.pos, "end of input while scanning raw string literal")
 }
 
-func (s *Scanner) stringOneline(delim rune) (token.Token, error) {
+func (s *Scanner) stringLiteral(delim rune) (token.Token, error) {
 	var parts []token.FormatStrValue // Parts collected for a format string.
 	partPos := s.tpos()              // Start position of the current format string part.
 	var b strings.Builder

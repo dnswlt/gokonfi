@@ -254,6 +254,15 @@ func TestEvalBuiltins(t *testing.T) {
 		{input: "substr('\u00fcber', 0, 2)", want: StringVal("\u00fc")},
 		// Of course, len behaves accordingly:
 		{input: "len('\u00fcber')", want: IntVal(5)},
+		// typeof
+		{input: "typeof('')", want: StringVal("string")},
+		{input: "typeof(1)", want: StringVal("int")},
+		{input: "typeof(3.)", want: StringVal("double")},
+		{input: "typeof(len)", want: StringVal("builtin")},
+		{input: "typeof(func(){nil})", want: StringVal("func")},
+		{input: "typeof(true)", want: StringVal("bool")},
+		{input: "typeof({})", want: StringVal("record")},
+		{input: "typeof([1,2])", want: StringVal("list")},
 	}
 	for i, test := range tests {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {

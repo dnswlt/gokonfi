@@ -265,6 +265,34 @@ func TestScanOnelineString(t *testing.T) {
 	}
 }
 
+func TestScanRawString(t *testing.T) {
+	type TestData struct {
+		input, want string
+	}
+	inputs := []TestData{
+		{"`very raw`", `very raw`},
+		{"`very\r\nraw`", "very\nraw"},
+		{"`  very\r\n  raw\n`", "  very\n  raw\n"},
+		{"`" + `no \n\r\t"' escape` + "`", `no \n\r\t"' escape`},
+	}
+	for _, td := range inputs {
+		s := NewScanner(td.input)
+		tok, err := s.NextToken()
+		if err != nil {
+			t.Fatalf("Error scanning identifier: %s", err)
+		}
+		if !s.AtEnd() {
+			t.Fatalf("Expected to be at end. Remaining substring: %s", s.rem())
+		}
+		if tok.Typ != token.StrLiteral {
+			t.Fatalf("Expected StrLiteral token, got %s", tok.Typ)
+		}
+		if tok.Val != td.want {
+			t.Fatalf("Expected %s as Val, got %s", td.want, tok.Val)
+		}
+	}
+}
+
 func TestScanFormatString(t *testing.T) {
 	tests := []struct {
 		input          string

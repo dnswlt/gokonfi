@@ -2,6 +2,7 @@ package gokonfi
 
 import (
 	"fmt"
+	"log"
 	"strings"
 )
 
@@ -19,6 +20,7 @@ var builtinFunctions = []*NativeFuncVal{
 	{Name: "len", Arity: 1, F: builtinLen},
 	{Name: "str", Arity: 1, F: builtinStr},
 	{Name: "substr", Arity: 3, F: builtinSubstr},
+	{Name: "typeof", Arity: 1, F: builtinTypeof},
 }
 
 // cond(b any, x any, y any) any
@@ -184,4 +186,34 @@ func builtinSubstr(args []Val, ctx *Ctx) (Val, error) {
 		return StringVal(string(s)[start:end]), nil
 	}
 	return nil, fmt.Errorf("substr: invalid type: %T", args[0])
+}
+
+// typeof(x any) string
+func builtinTypeof(args []Val, ctx *Ctx) (Val, error) {
+	typeof := func(s Val) string {
+		switch s.(type) {
+		case IntVal:
+			return "int"
+		case DoubleVal:
+			return "double"
+		case StringVal:
+			return "string"
+		case BoolVal:
+			return "bool"
+		case NilVal:
+			return "nil"
+		case *RecVal:
+			return "record"
+		case *ListVal:
+			return "list"
+		case *NativeFuncVal:
+			return "builtin"
+		case *FuncExprVal:
+			return "func"
+		default:
+			log.Fatalf("typeof: missing type in switch: %T", s)
+			return "" // never reached
+		}
+	}(args[0])
+	return StringVal(typeof), nil
 }

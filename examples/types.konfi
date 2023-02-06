@@ -1,0 +1,123 @@
+// THIS IS JUST AN EXPLORATION. IT IS NOT (YET) A VALID KONFI(G).
+
+// Konfi will soon be a typed language. Types will be powerful;
+// they will not just be structural ("this is a str, that's an int"),
+// but they will include:
+//
+// * arbitrary (user-defined) validation functions:
+//   x::intrange(0, 100)   ==> error if x == 101
+// * implicit conversions: (1::minute + 10::second) ==> 70::second
+// * output formatting: {year: 2023 month: 1 day: 3} :: iso_date ==> "2023-01-03"
+//
+// Here we explore what this could look like concretely.
+
+type intrange(min, max_excl): func(x): x >= min && x < max_excl
+
+type iso_date: date('2006-01-02')
+
+type date(fmt): {
+    // If we assign any value to a field of type date, this function gets called
+    // if the type of the expression being assigned is not already of type date.
+    assign(s) {
+        if typeof(s) == 'str' then time.parse(fmt, s)
+        elif typeof(s) == 'int' then time.unix_millis(s)
+        else types.error("invalid type for date: ${typeof(s)}")
+    }
+    // Semantic validation is done for any value of type date (whether it gets assigned 
+    // or just transiently used in an expression)
+    validate(d) {
+        d.year >= 1970 &&
+        d.month >= 1 && d.month <= 12
+        d.day >= 1 && d.day <= 31
+    }
+    format(d) {
+        time.format(fmt, d)
+    }
+}
+
+// A type declaration that consists of a single function is a shorthand for 
+// a declaration that only has the .validate field set.
+type url: func(u) { u ~= "(https?|ftp)://.*" } 
+
+// Same as:
+type url2 {
+    validate(u) {
+        u ~= "(https?|ftp)://.*"
+    }
+}
+
+// Nice and well, but what about structrual aspects of types?
+// ("should have fields x, y, z of given types)
+// Well, we already have templates, so we simply add types to their
+// fields.
+
+template flags {
+    num_things::int: 3
+    some_url::url: "http://example.com"
+
+    // Optional vs. required fields?
+    // Any field that has a type is required. 
+    // Fields without a type are optional.
+    // Typed fields that are optional can be expressed, too, using type modifiers:
+    optional_int::optional(int)
+}
+
+// A type modifier is nothing but a function over types.
+type optional(t): type.alt(isnil, t)
+
+// Now that feels like cheating, can we define sth like type.alt ourselves?
+// Of course we can:
+type optional2(t): func (x) { isnil(x) || t.validate(x) }
+// (Note that with this shorthand definition drops the .assign and .format fields of t.)
+
+{
+    start_date::iso_date: "2012-01-30"
+
+    good_small_int :: intrange(0, 128): 17
+    bad_small_int :: intrange(0, 128): 1000  // Leads to a type error if strict checking is enabled.
+}
+
+
+// So far we looked at assignment conversions, but not the promised
+// implicit conversions a la (1::minute + 10::second) ==> 70::second.
+// How could that work?
+
+// The underlying question is how will our interpreter handle operations
+// (here: binary +) on values of types like ::minute or ::second?
+//
+// All user-defined types have an underlying type ('int', 'record', 'string', etc.)
+// on which we could perform the operation. That would not allow us to do sth like
+// "2021-03-01"::date + 7::days, however, since the former is a record type. 
+// And even for different int based types (like 1::minute + 10::second) we'd have
+// to define what the resulting type would be.
+
+// The typical answers to these questions are of course (a) multiple dispatch and (b)
+// dynamic hand-crafted dispatch:
+
+// Variant (a):
+method __plus__(x::minute, y::second) { (60 * x::int + y::int)::second }
+// Roughly the same as let __plus__: func (x::minute, y::second) { ... }, but allows
+// for multiple definitions of the same name (__plus__).
+// Needs more "methods" for (x::hour, y::second), etc. etc. O(N^2) cumbersome.
+
+// Variant (b):
+// *shrug*
+
+// Variant (c):
+// Distinguish types ("duration") and units. 1::hour and 10::second are both
+// of type duration, but have different units.
+// Units only make sense for numeric types, I suppose.
+
+type duration <: int {
+    units {
+        nanos: 1  // This is the base unit. All other units are expressed as multiples.
+        micros: nanos * 1000
+        millis: micros * 1000
+        seconds: millis * 1000
+        minutes: seconds * 60
+        hours: minutes * 60
+        days: hours * 24
+    }
+}
+
+// And that's it! On line 123 I declare: Konfi types are as easy as 1-2-3.
