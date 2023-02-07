@@ -56,14 +56,15 @@ type UnaryExpr struct {
 	Op    token.TokenType
 }
 
+// if then else
 type ConditionalExpr struct {
 	Cond Expr
 	X    Expr
 	Y    Expr
 }
 
+// func (x, y) { x + y - 1 }
 type FuncExpr struct {
-	// func (x, y) { x + y - 1 }
 	Params  []*VarExpr
 	FuncPos token.Pos
 	FuncEnd token.Pos
@@ -88,18 +89,23 @@ type FieldAcc struct {
 	NameEnd token.Pos
 }
 
+// f: expr
 type RecField struct {
 	Name    string
 	NamePos token.Pos
-	Val     Expr
+	X       Expr
+	T       TypeAnnotation
 }
 
+// let x: expr
 type LetVar struct {
 	Name    string
 	NamePos token.Pos
-	Val     Expr
+	X       Expr
+	T       TypeAnnotation
 }
 
+// { a: 1 b: "two" }
 type RecExpr struct {
 	LetVars map[string]LetVar
 	Fields  map[string]RecField
@@ -107,10 +113,17 @@ type RecExpr struct {
 	RecEnd  token.Pos
 }
 
+// [1, 2, 3]
 type ListExpr struct {
 	Elements []Expr
 	ListPos  token.Pos
 	ListEnd  token.Pos
+}
+
+// X :: int
+type TypedExpr struct {
+	X Expr
+	T TypeAnnotation
 }
 
 type LiteralPos struct {
@@ -144,117 +157,84 @@ type NilLiteral struct {
 
 // Implementations of Expr.
 
-func (e *BinaryExpr) Pos() token.Pos {
-	return e.X.Pos()
-}
-func (e *BinaryExpr) End() token.Pos {
-	return e.Y.End()
-}
-func (e *BinaryExpr) exprNode() {}
+func (e *BinaryExpr) Pos() token.Pos { return e.X.Pos() }
+func (e *BinaryExpr) End() token.Pos { return e.Y.End() }
+func (e *BinaryExpr) exprNode()      {}
 
-func (e *UnaryExpr) Pos() token.Pos {
-	return e.OpPos
-}
-func (e *UnaryExpr) End() token.Pos {
-	return e.X.End()
-}
-func (e *UnaryExpr) exprNode() {}
+func (e *UnaryExpr) Pos() token.Pos { return e.OpPos }
+func (e *UnaryExpr) End() token.Pos { return e.X.End() }
+func (e *UnaryExpr) exprNode()      {}
 
-func (e *FieldAcc) Pos() token.Pos {
-	return e.X.Pos()
-}
-func (e *FieldAcc) End() token.Pos {
-	return e.NameEnd
-}
-func (e *FieldAcc) exprNode() {}
+func (e *FieldAcc) Pos() token.Pos { return e.X.Pos() }
+func (e *FieldAcc) End() token.Pos { return e.NameEnd }
+func (e *FieldAcc) exprNode()      {}
 
-func (e *IntLiteral) Pos() token.Pos {
-	return e.ValPos
-}
-func (e *IntLiteral) End() token.Pos {
-	return e.ValEnd
-}
-func (e *IntLiteral) exprNode() {}
+func (e *IntLiteral) Pos() token.Pos { return e.ValPos }
+func (e *IntLiteral) End() token.Pos { return e.ValEnd }
+func (e *IntLiteral) exprNode()      {}
 
-func (e *DoubleLiteral) Pos() token.Pos {
-	return e.ValPos
-}
-func (e *DoubleLiteral) End() token.Pos {
-	return e.ValEnd
-}
-func (e *DoubleLiteral) exprNode() {}
+func (e *DoubleLiteral) Pos() token.Pos { return e.ValPos }
+func (e *DoubleLiteral) End() token.Pos { return e.ValEnd }
+func (e *DoubleLiteral) exprNode()      {}
 
-func (e *BoolLiteral) Pos() token.Pos {
-	return e.ValPos
-}
-func (e *BoolLiteral) End() token.Pos {
-	return e.ValEnd
-}
-func (e *BoolLiteral) exprNode() {}
+func (e *BoolLiteral) Pos() token.Pos { return e.ValPos }
+func (e *BoolLiteral) End() token.Pos { return e.ValEnd }
+func (e *BoolLiteral) exprNode()      {}
 
-func (e *StrLiteral) Pos() token.Pos {
-	return e.ValPos
-}
-func (e *StrLiteral) End() token.Pos {
-	return e.ValEnd
-}
-func (e *StrLiteral) exprNode() {}
+func (e *StrLiteral) Pos() token.Pos { return e.ValPos }
+func (e *StrLiteral) End() token.Pos { return e.ValEnd }
+func (e *StrLiteral) exprNode()      {}
 
-func (e *NilLiteral) Pos() token.Pos {
-	return e.ValPos
-}
-func (e *NilLiteral) End() token.Pos {
-	return e.ValEnd
-}
-func (e *NilLiteral) exprNode() {}
+func (e *NilLiteral) Pos() token.Pos { return e.ValPos }
+func (e *NilLiteral) End() token.Pos { return e.ValEnd }
+func (e *NilLiteral) exprNode()      {}
 
-func (e *VarExpr) Pos() token.Pos {
-	return e.NamePos
-}
-func (e *VarExpr) End() token.Pos {
-	return e.NameEnd
-}
-func (e *VarExpr) exprNode() {}
+func (e *VarExpr) Pos() token.Pos { return e.NamePos }
+func (e *VarExpr) End() token.Pos { return e.NameEnd }
+func (e *VarExpr) exprNode()      {}
 
-func (e *RecExpr) Pos() token.Pos {
-	return e.RecPos
-}
-func (e *RecExpr) End() token.Pos {
-	return e.RecPos
-}
-func (e *RecExpr) exprNode() {}
+func (e *RecExpr) Pos() token.Pos { return e.RecPos }
+func (e *RecExpr) End() token.Pos { return e.RecPos }
+func (e *RecExpr) exprNode()      {}
 
-func (e *ListExpr) Pos() token.Pos {
-	return e.ListPos
-}
-func (e *ListExpr) End() token.Pos {
-	return e.ListEnd
-}
-func (e *ListExpr) exprNode() {}
+func (e *ListExpr) Pos() token.Pos { return e.ListPos }
+func (e *ListExpr) End() token.Pos { return e.ListEnd }
+func (e *ListExpr) exprNode()      {}
 
-func (e *ConditionalExpr) Pos() token.Pos {
-	return e.Cond.Pos()
-}
-func (e *ConditionalExpr) End() token.Pos {
-	return e.Y.End()
-}
-func (e *ConditionalExpr) exprNode() {}
+func (e *TypedExpr) Pos() token.Pos { return e.X.Pos() }
+func (e *TypedExpr) End() token.Pos { return e.T.End() }
+func (e *TypedExpr) exprNode()      {}
 
-func (e *CallExpr) Pos() token.Pos {
-	return e.Func.Pos()
-}
-func (e *CallExpr) End() token.Pos {
-	return e.ArgsEnd
-}
-func (e *CallExpr) exprNode() {}
+func (e *ConditionalExpr) Pos() token.Pos { return e.Cond.Pos() }
+func (e *ConditionalExpr) End() token.Pos { return e.Y.End() }
+func (e *ConditionalExpr) exprNode()      {}
 
-func (e *FuncExpr) Pos() token.Pos {
-	return e.FuncPos
+func (e *CallExpr) Pos() token.Pos { return e.Func.Pos() }
+func (e *CallExpr) End() token.Pos { return e.ArgsEnd }
+func (e *CallExpr) exprNode()      {}
+
+func (e *FuncExpr) Pos() token.Pos { return e.FuncPos }
+func (e *FuncExpr) End() token.Pos { return e.FuncEnd }
+func (e *FuncExpr) exprNode()      {}
+
+// Type annotations.
+
+type TypeAnnotation interface {
+	Node
+	typeAnnotationImpl()
 }
-func (e *FuncExpr) End() token.Pos {
-	return e.FuncEnd
+
+type NamedType struct {
+	Name    string
+	NamePos token.Pos
+	NameEnd token.Pos
 }
-func (e *FuncExpr) exprNode() {}
+
+// Implementations of TypeAnnotation.
+
+func (t *NamedType) typeAnnotationImpl() {}
+func (t *NamedType) Pos() token.Pos      { return t.NamePos }
+func (t *NamedType) End() token.Pos      { return t.NameEnd }
 
 // Parser methods.
 
@@ -300,6 +280,10 @@ func (p *Parser) expect(tokenType token.TokenType, context string) error {
 
 func (p *Parser) fail(msg string, fmtArgs ...any) error {
 	return &ParseError{tok: p.peek(), msg: fmt.Sprintf(msg, fmtArgs...)}
+}
+
+func (p *Parser) failat(t token.Token, msg string, fmtArgs ...any) error {
+	return &ParseError{tok: t, msg: fmt.Sprintf(msg, fmtArgs...)}
 }
 
 // AtEnd returns true if the parser has processed all tokens.
@@ -424,7 +408,7 @@ func (p *Parser) factor() (Expr, error) {
 
 // unary          -> ( "!" | "-" ) unary
 //
-//	| primary ;
+//	| annotated_primary ;
 func (p *Parser) unary() (Expr, error) {
 	if p.match(token.Minus, token.Complement, token.Not) {
 		t := p.previous()
@@ -434,16 +418,32 @@ func (p *Parser) unary() (Expr, error) {
 		}
 		return &UnaryExpr{X: x, OpPos: t.Pos, Op: t.Typ}, nil
 	}
-	return p.primary()
+	return p.annotatedPrimary()
 }
 
+func (p *Parser) annotatedPrimary() (Expr, error) {
+	e, err := p.primary()
+	if err != nil {
+		return nil, err
+	}
+	if p.match(token.OfType) {
+		typ, err := p.typeAnnotation()
+		if err != nil {
+			return nil, err
+		}
+		e = &TypedExpr{X: e, T: typ}
+	}
+	return e, nil
+}
+
+// annotated_primary   -> primary ["::" type_annotation]
 func (p *Parser) primary() (Expr, error) {
 	op, err := p.operand()
 	if err != nil {
 		return nil, err
 	}
 	e := op
-	// Parse optional postfix ("." field | "(" argList ")" | "[" expr "]")
+	// Parse optional postfix ("." field | "(" argList ")" | "[" expr "]" | "::" type_annotation )
 Loop:
 	for !p.AtEnd() {
 		switch {
@@ -487,6 +487,14 @@ func (p *Parser) exprList(sep token.TokenType, close token.TokenType) ([]Expr, e
 	return nil, &ParseError{tok: p.previous(), msg: "reached end of input while parsing expression list"}
 }
 
+func (p *Parser) ident() (*VarExpr, error) {
+	if err := p.expect(token.Ident, "identifier"); err != nil {
+		return nil, err
+	}
+	t := p.previous()
+	return &VarExpr{Name: t.Val, NamePos: t.Pos, NameEnd: t.End}, nil
+}
+
 func (p *Parser) identList(sep token.TokenType, close token.TokenType) ([]*VarExpr, error) {
 	idents := []*VarExpr{}
 	seen := make(map[string]bool)
@@ -494,15 +502,15 @@ func (p *Parser) identList(sep token.TokenType, close token.TokenType) ([]*VarEx
 		return idents, nil
 	}
 	for !p.AtEnd() {
-		if err := p.expect(token.Ident, "identifier list"); err != nil {
+		ident, err := p.ident()
+		if err != nil {
 			return nil, err
 		}
-		t := p.previous()
-		if seen[t.Val] {
-			return nil, &ParseError{tok: t, msg: fmt.Sprintf("duplicate identifier in identifier list: %s", t.Val)}
+		if seen[ident.Name] {
+			return nil, p.failat(p.previous(), "duplicate identifier in identifier list: %s", ident.Name)
 		}
-		seen[t.Val] = true
-		idents = append(idents, &VarExpr{Name: t.Val, NamePos: t.Pos, NameEnd: t.End})
+		seen[ident.Name] = true
+		idents = append(idents, ident)
 		if p.match(close) {
 			return idents, nil
 		}
@@ -720,7 +728,7 @@ func (p *Parser) letVar() (*LetVar, error) {
 				return nil, err
 			}
 			f := &FuncExpr{Params: params, FuncPos: v.Pos, FuncEnd: body.End(), Body: body}
-			return &LetVar{Name: v.Val, NamePos: v.Pos, Val: f}, nil
+			return &LetVar{Name: v.Val, NamePos: v.Pos, X: f}, nil
 		}
 		// Regular variable binding
 		if err := p.expect(token.Colon, "let"); err != nil {
@@ -730,7 +738,7 @@ func (p *Parser) letVar() (*LetVar, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &LetVar{Name: v.Val, NamePos: v.Pos, Val: expr}, nil
+		return &LetVar{Name: v.Val, NamePos: v.Pos, X: expr}, nil
 	case p.match(token.Template):
 		if err := p.expect(token.Ident, "template"); err != nil {
 			return nil, err
@@ -748,7 +756,7 @@ func (p *Parser) letVar() (*LetVar, error) {
 			return nil, err
 		}
 		f := &FuncExpr{Params: params, FuncPos: v.Pos, FuncEnd: body.End(), Body: body}
-		return &LetVar{Name: v.Val, NamePos: v.Pos, Val: f}, nil
+		return &LetVar{Name: v.Val, NamePos: v.Pos, X: f}, nil
 	}
 	return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("unexpected token '%s' in let binding", p.peek().Val)}
 }
@@ -767,5 +775,14 @@ func (p *Parser) recordField() (*RecField, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &RecField{Name: field.Val, NamePos: field.Pos, Val: expr}, nil
+	return &RecField{Name: field.Val, NamePos: field.Pos, X: expr}, nil
+}
+
+func (p *Parser) typeAnnotation() (TypeAnnotation, error) {
+	// For now, only type names, no complex expressions.
+	i, err := p.ident()
+	if err != nil {
+		return nil, err
+	}
+	return &NamedType{Name: i.Name, NamePos: i.Pos(), NameEnd: i.End()}, nil
 }

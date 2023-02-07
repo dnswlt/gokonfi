@@ -51,6 +51,7 @@ func TestScanOperators(t *testing.T) {
 		{op: ".", want: token.Dot},
 		{op: "!", want: token.Not},
 		{op: ":", want: token.Colon},
+		{op: "::", want: token.OfType},
 		{op: "(", want: token.LeftParen},
 		{op: ")", want: token.RightParen},
 		{op: "{", want: token.LeftBrace},

@@ -3,12 +3,82 @@ package gokonfi
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/dnswlt/gokonfi/token"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
+
+type sexpr interface {
+	sexpr() string
+}
+
+func (e *BinaryExpr) sexpr() string {
+	return fmt.Sprintf("(%s %s %s)", e.Op, e.X.(sexpr).sexpr(), e.Y.(sexpr).sexpr())
+}
+func (e *UnaryExpr) sexpr() string { return fmt.Sprintf("(%s %s)", e.Op, e.X.(sexpr).sexpr()) }
+func (e *FieldAcc) sexpr() string {
+	return fmt.Sprintf("(%s %s %s)", token.Dot, e.X.(sexpr).sexpr(), e.Name)
+}
+func (e *IntLiteral) sexpr() string    { return fmt.Sprintf("%d", e.Val) }
+func (e *DoubleLiteral) sexpr() string { return fmt.Sprintf("%f", e.Val) }
+func (e *BoolLiteral) sexpr() string   { return fmt.Sprintf("%t", e.Val) }
+func (e *StrLiteral) sexpr() string    { return fmt.Sprintf("%q", e.Val) }
+func (e *NilLiteral) sexpr() string    { return "nil" }
+func (e *VarExpr) sexpr() string       { return e.Name }
+func (e *RecExpr) sexpr() string {
+	var b strings.Builder
+	b.WriteString("(rec")
+	for _, f := range e.Fields {
+		b.WriteString(fmt.Sprintf(" (%s %s)", f.Name, f.X.(sexpr).sexpr()))
+	}
+	b.WriteString(")")
+	return b.String()
+}
+func (e *ListExpr) sexpr() string {
+	var b strings.Builder
+	b.WriteString("(rec")
+	for _, f := range e.Elements {
+		b.WriteString(f.(sexpr).sexpr())
+	}
+	b.WriteString(")")
+	return b.String()
+}
+func (e *TypedExpr) sexpr() string {
+	return fmt.Sprintf("(%s %s %s)", token.OfType, e.X.(sexpr).sexpr(), e.T.(sexpr).sexpr())
+}
+func (e *NamedType) sexpr() string {
+	return e.Name
+}
+func (e *ConditionalExpr) sexpr() string {
+	return fmt.Sprintf("(if %s %s %s)", e.Cond.(sexpr).sexpr(), e.X.(sexpr).sexpr(), e.Y.(sexpr).sexpr())
+}
+func (e *CallExpr) sexpr() string {
+	var b strings.Builder
+	b.WriteString("(")
+	b.WriteString(e.Func.(sexpr).sexpr())
+	for _, arg := range e.Args {
+		b.WriteString(" ")
+		b.WriteString(arg.(sexpr).sexpr())
+	}
+	b.WriteString(")")
+	return b.String()
+}
+func (e *FuncExpr) sexpr() string {
+	var b strings.Builder
+	b.WriteString("(func (")
+	for i, p := range e.Params {
+		if i > 0 {
+			b.WriteString(" ")
+		}
+		b.WriteString(p.Name)
+	}
+	b.WriteString(")")
+	b.WriteString(e.Body.(sexpr).sexpr())
+	return b.String()
+}
 
 func scanTokens(input string) ([]token.Token, error) {
 	s := NewScanner(input)
@@ -59,6 +129,7 @@ func TestParseTopLevelExpr(t *testing.T) {
 		{name: "list", input: "[1, 2, 3]", want: (*ListExpr)(nil)},
 		// Format strings are desugared by the parser, so expect a str call:
 		{name: "fstr", input: `"${1 + 2}"`, want: (*CallExpr)(nil)},
+		{name: "type", input: "x::int", want: (*TypedExpr)(nil)},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -107,21 +178,26 @@ func TestParseLetVar(t *testing.T) {
 }
 
 func TestParseFieldAcc(t *testing.T) {
-	ts, err := scanTokens("{}.a.b")
-	if err != nil {
-		t.Fatalf("Unexpected error while scanning the input: %s", err)
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "rec", input: "{r: 1}.r", want: "(Dot (rec (r 1)) r)"},
+		{name: "multiple", input: "a.b.c", want: "(Dot (Dot a b) c)"},
+		{name: "call", input: "f().x", want: "(Dot (f) x)"},
+		{name: "call2", input: "f().x().y", want: "(Dot ((Dot (f) x)) y)"},
 	}
-	p := NewParser(ts)
-	e, err := p.Expression()
-	if err != nil {
-		t.Fatalf("Could not parse expression: %s", err)
-	}
-	fa, ok := e.(*FieldAcc)
-	if !ok {
-		t.Fatalf("Expected a FieldAcc expression, got sth else")
-	}
-	if fa.Name != "b" {
-		t.Fatalf("Expected .b field access, got %v", fa.Name)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			e, err := parse(test.input)
+			if err != nil {
+				t.Fatalf("Could not parse expression: %s", err)
+			}
+			if got := e.(sexpr).sexpr(); got != test.want {
+				t.Errorf("Want %s, got %s", test.want, got)
+			}
+		})
 	}
 }
 
@@ -145,10 +221,10 @@ func reclet(letvars []*LetVar, fields []*RecField) *RecExpr {
 	return &RecExpr{LetVars: letvarMap, Fields: fieldMap}
 }
 func fld(name string, val Expr) *RecField {
-	return &RecField{Name: name, Val: val}
+	return &RecField{Name: name, X: val}
 }
 func letv(name string, val Expr) *LetVar {
-	return &LetVar{Name: name, Val: val}
+	return &LetVar{Name: name, X: val}
 }
 func eint(i int64) *IntLiteral {
 	return &IntLiteral{Val: i}
@@ -281,6 +357,45 @@ func TestParseErrors(t *testing.T) {
 				t.Errorf("Want ParseError, got %T", err)
 			} else if parseErr.tok.Pos != token.Pos(test.errAtPos) {
 				t.Errorf("Got error at pos %d (%s), want at pos %d", parseErr.tok.Pos, parseErr, test.errAtPos)
+			}
+		})
+	}
+}
+
+func TestParseTypedExpr(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "variable",
+			input: "x::int",
+			want:  "(OfType x int)",
+		},
+		{
+			name:  "brackets",
+			input: "3 + (1 + 2)::int + 10",
+			want:  "(Plus (Plus 3 (OfType (Plus 1 2) int)) 10)",
+		},
+		{
+			name:  "rec",
+			input: "{} :: int @ {} :: str",
+			want:  "(Merge (OfType (rec) int) (OfType (rec) str))",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			gotExpr, err := parse(test.input)
+			if err != nil {
+				t.Fatalf("failed to parse: %s", err)
+			}
+			gotSexpr, ok := gotExpr.(sexpr)
+			if !ok {
+				t.Fatalf("Type %T does not implement sexpr", gotExpr)
+			}
+			if got := gotSexpr.sexpr(); got != test.want {
+				t.Errorf("Want: %s, got: %s", test.want, got)
 			}
 		})
 	}

@@ -44,6 +44,7 @@ const (
 	LeftSquare  // [
 	RightSquare // ]
 	Colon       // :
+	OfType      // ::
 	// Identifiers
 	Ident
 	// Keywords

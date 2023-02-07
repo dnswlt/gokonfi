@@ -11,7 +11,7 @@
 //
 // Here we explore what this could look like concretely.
 
-type intrange(min, max_excl): func(x): x >= min && x < max_excl
+type intrange(min, max_excl): func(x) { x >= min && x < max_excl }
 
 type iso_date: date('2006-01-02')
 
@@ -51,7 +51,7 @@ type url2 {
 // Well, we already have templates, so we simply add types to their
 // fields.
 
-template flags {
+let template typed_flags() {
     num_things::int: 3
     some_url::url: "http://example.com"
 

@@ -163,8 +163,6 @@ func (s *Scanner) NextToken() (token.Token, error) {
 			return s.token(token.RightSquare)
 		case ',':
 			return s.token(token.Comma)
-		case ':':
-			return s.token(token.Colon)
 		case '+':
 			return s.token(token.Plus)
 		case '-':
@@ -187,6 +185,11 @@ func (s *Scanner) NextToken() (token.Token, error) {
 			return s.token(token.Dot)
 		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
 			return s.number()
+		case ':':
+			if s.match(':') {
+				return s.token(token.OfType)
+			}
+			return s.token(token.Colon)
 		case '<':
 			if s.match('=') {
 				return s.token(token.LessEq)

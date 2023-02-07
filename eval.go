@@ -470,15 +470,15 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		rctx := ChildCtx(ctx)
 		// Prepare context by storing lazy expressions of all fields.
 		for _, lv := range e.LetVars {
-			rctx.storeExpr(lv.Name, lv.Val)
+			rctx.storeExpr(lv.Name, lv.X)
 		}
 		for _, f := range e.Fields {
-			rctx.storeExpr(f.Name, f.Val)
+			rctx.storeExpr(f.Name, f.X)
 		}
 		// Evaluate all fields.
 		for _, lv := range e.LetVars {
 			rctx.setActive(lv.Name)
-			v, err := Eval(lv.Val, rctx)
+			v, err := Eval(lv.X, rctx)
 			if err != nil {
 				return nil, err
 			}
@@ -487,7 +487,7 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		rec := NewRec()
 		for _, f := range e.Fields {
 			rctx.setActive(f.Name)
-			v, err := Eval(f.Val, rctx)
+			v, err := Eval(f.X, rctx)
 			if err != nil {
 				return nil, err
 			}
