@@ -65,7 +65,7 @@ type ConditionalExpr struct {
 
 // func (x, y) { x + y - 1 }
 type FuncExpr struct {
-	Params  []*VarExpr
+	Params  []AnnotatedIdent
 	FuncPos token.Pos
 	FuncEnd token.Pos
 	Body    Expr
@@ -89,12 +89,16 @@ type FieldAcc struct {
 	NameEnd token.Pos
 }
 
-// f: expr
-type RecField struct {
+type AnnotatedIdent struct {
 	Name    string
 	NamePos token.Pos
-	X       Expr
 	T       TypeAnnotation
+}
+
+// f: expr
+type RecField struct {
+	AnnotatedIdent
+	X Expr
 }
 
 // let x: expr
@@ -102,7 +106,6 @@ type LetVar struct {
 	Name    string
 	NamePos token.Pos
 	X       Expr
-	T       TypeAnnotation
 }
 
 // { a: 1 b: "two" }
@@ -487,22 +490,14 @@ func (p *Parser) exprList(sep token.TokenType, close token.TokenType) ([]Expr, e
 	return nil, &ParseError{tok: p.previous(), msg: "reached end of input while parsing expression list"}
 }
 
-func (p *Parser) ident() (*VarExpr, error) {
-	if err := p.expect(token.Ident, "identifier"); err != nil {
-		return nil, err
-	}
-	t := p.previous()
-	return &VarExpr{Name: t.Val, NamePos: t.Pos, NameEnd: t.End}, nil
-}
-
-func (p *Parser) identList(sep token.TokenType, close token.TokenType) ([]*VarExpr, error) {
-	idents := []*VarExpr{}
+func (p *Parser) identList(sep token.TokenType, close token.TokenType) ([]AnnotatedIdent, error) {
+	idents := []AnnotatedIdent{}
 	seen := make(map[string]bool)
 	if p.match(close) {
 		return idents, nil
 	}
 	for !p.AtEnd() {
-		ident, err := p.ident()
+		ident, err := p.annotatedIdent()
 		if err != nil {
 			return nil, err
 		}
@@ -762,11 +757,10 @@ func (p *Parser) letVar() (*LetVar, error) {
 }
 
 func (p *Parser) recordField() (*RecField, error) {
-	if !p.match(token.Ident) {
-		t := p.peek()
-		return nil, &ParseError{tok: t, msg: fmt.Sprintf("expected identifier for record field, got %s", t.Typ)}
+	v, err := p.annotatedIdent()
+	if err != nil {
+		return nil, err
 	}
-	field := p.previous()
 	if !p.match(token.Colon) {
 		t := p.peek()
 		return nil, &ParseError{tok: t, msg: fmt.Sprintf("expected ':' for record field, got %s", t.Typ)}
@@ -775,14 +769,30 @@ func (p *Parser) recordField() (*RecField, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &RecField{Name: field.Val, NamePos: field.Pos, X: expr}, nil
+	return &RecField{AnnotatedIdent: v, X: expr}, nil
 }
 
 func (p *Parser) typeAnnotation() (TypeAnnotation, error) {
 	// For now, only type names, no complex expressions.
-	i, err := p.ident()
-	if err != nil {
-		return nil, err
+	if p.match(token.Ident) {
+		t := p.previous()
+		return &NamedType{Name: t.Val, NamePos: t.Pos, NameEnd: t.End}, nil
 	}
-	return &NamedType{Name: i.Name, NamePos: i.Pos(), NameEnd: i.End()}, nil
+	return nil, p.fail("typeAnnotation: unexpected token")
+}
+
+func (p *Parser) annotatedIdent() (AnnotatedIdent, error) {
+	if err := p.expect(token.Ident, "annotatedIdent"); err != nil {
+		return AnnotatedIdent{}, err
+	}
+	ident := p.previous()
+	var typ TypeAnnotation
+	if p.match(token.OfType) {
+		t, err := p.typeAnnotation()
+		if err != nil {
+			return AnnotatedIdent{}, err
+		}
+		typ = t
+	}
+	return AnnotatedIdent{Name: ident.Val, T: typ, NamePos: ident.Pos}, nil
 }

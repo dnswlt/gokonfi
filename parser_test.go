@@ -32,7 +32,11 @@ func (e *RecExpr) sexpr() string {
 	var b strings.Builder
 	b.WriteString("(rec")
 	for _, f := range e.Fields {
-		b.WriteString(fmt.Sprintf(" (%s %s)", f.Name, f.X.(sexpr).sexpr()))
+		if f.T != nil {
+			b.WriteString(fmt.Sprintf(" ((%s %s) %s)", f.T.(sexpr).sexpr(), f.Name, f.X.(sexpr).sexpr()))
+		} else {
+			b.WriteString(fmt.Sprintf(" (%s %s)", f.Name, f.X.(sexpr).sexpr()))
+		}
 	}
 	b.WriteString(")")
 	return b.String()
@@ -221,7 +225,7 @@ func reclet(letvars []*LetVar, fields []*RecField) *RecExpr {
 	return &RecExpr{LetVars: letvarMap, Fields: fieldMap}
 }
 func fld(name string, val Expr) *RecField {
-	return &RecField{Name: name, X: val}
+	return &RecField{AnnotatedIdent: AnnotatedIdent{Name: name}, X: val}
 }
 func letv(name string, val Expr) *LetVar {
 	return &LetVar{Name: name, X: val}
@@ -382,6 +386,11 @@ func TestParseTypedExpr(t *testing.T) {
 			name:  "rec",
 			input: "{} :: int @ {} :: str",
 			want:  "(Merge (OfType (rec) int) (OfType (rec) str))",
+		},
+		{
+			name:  "recfield",
+			input: "{x::int: 7}",
+			want:  "(rec ((int x) 7))",
 		},
 	}
 	for _, test := range tests {

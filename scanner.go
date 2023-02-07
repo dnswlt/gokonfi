@@ -418,7 +418,3 @@ func (s *Scanner) skipFormatStringExpr(delim rune) error {
 	}
 	return s.fail("end of input")
 }
-
-func (s *Scanner) stringMultiline(delim rune) (token.Token, error) {
-	return token.Token{}, s.fail("multiline strings are not implemented yet")
-}
