@@ -3,6 +3,7 @@ package gokonfi
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -10,6 +11,10 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
+
+// sexpr (s-expression; yes, the Lisp stuff) is a test helper to conveniently
+// compare parse trees to expected results. To use it, cast your Expr to a sexpr
+// and call its sexpr() method.
 
 type sexpr interface {
 	sexpr() string
@@ -31,7 +36,13 @@ func (e *VarExpr) sexpr() string       { return e.Name }
 func (e *RecExpr) sexpr() string {
 	var b strings.Builder
 	b.WriteString("(rec")
-	for _, f := range e.Fields {
+	fs := []string{}
+	for f := range e.Fields {
+		fs = append(fs, f)
+	}
+	sort.Strings(fs)
+	for _, g := range fs {
+		f := e.Fields[g]
 		if f.T != nil {
 			b.WriteString(fmt.Sprintf(" ((%s %s) %s)", f.T.(sexpr).sexpr(), f.Name, f.X.(sexpr).sexpr()))
 		} else {
@@ -392,6 +403,11 @@ func TestParseTypedExpr(t *testing.T) {
 			input: "{x::int: 7}",
 			want:  "(rec ((int x) 7))",
 		},
+		{
+			name:  "nested",
+			input: "{x: 1::double y: 2::double r: x/y}",
+			want:  "(rec (r (Div x y)) (x (OfType 1 double)) (y (OfType 2 double)))",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -404,7 +420,7 @@ func TestParseTypedExpr(t *testing.T) {
 				t.Fatalf("Type %T does not implement sexpr", gotExpr)
 			}
 			if got := gotSexpr.sexpr(); got != test.want {
-				t.Errorf("Want: %s, got: %s", test.want, got)
+				t.Errorf("Want: %q, got: %q", test.want, got)
 			}
 		})
 	}

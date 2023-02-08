@@ -224,6 +224,7 @@ func (e *FuncExpr) exprNode()      {}
 
 type TypeAnnotation interface {
 	Node
+	TypeId() string
 	typeAnnotationImpl()
 }
 
@@ -235,6 +236,7 @@ type NamedType struct {
 
 // Implementations of TypeAnnotation.
 
+func (t *NamedType) TypeId() string      { return t.Name }
 func (t *NamedType) typeAnnotationImpl() {}
 func (t *NamedType) Pos() token.Pos      { return t.NamePos }
 func (t *NamedType) End() token.Pos      { return t.NameEnd }

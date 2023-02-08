@@ -441,3 +441,63 @@ func TestSizeofVal(t *testing.T) {
 		t.Errorf("Want size 8 for RecVal, got %d", got)
 	}
 }
+
+func TestEvalTypedExpr(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  Val
+	}{
+		{name: "int", input: "1::int", want: IntVal(1)},
+		{name: "intfield", input: "{x::int: 1}.x", want: IntVal(1)},
+		// Casting truncates
+		{name: "d2i-trunc", input: "1.9 :: int", want: IntVal(1)},
+		{name: "d2i-neg", input: "(-1.9) :: int", want: IntVal(-1)},
+		{name: "i2d", input: "1::double", want: DoubleVal(1)},
+		{name: "rec", input: "{x: 1.::int y: 2::double r: x::double/y}.r :: string", want: StringVal("0.5")},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			e, err := parse(test.input)
+			if err != nil {
+				t.Fatalf("Cannot parse expression: %s", err)
+			}
+			got, err := Eval(e, GlobalCtx())
+			if err != nil {
+				t.Fatalf("Failed to evaluate: %s", err)
+			}
+			if diff := cmp.Diff(test.want, got); diff != "" {
+				t.Errorf("List mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestEvalTypedExprError(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "s2i", input: `"foo"::int`, want: "cannot convert"},
+		{name: "s2i-prefix", input: `"3i"::int`, want: "cannot convert"},
+		{name: "nil-int", input: `nil::int`, want: "cannot convert"},
+		{name: "rec-int", input: `{x: 0}::int`, want: "cannot convert"},
+		{name: "invalid", input: `1::doesnotexist`, want: "unknown type id"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			e, err := parse(test.input)
+			if err != nil {
+				t.Fatalf("Cannot parse expression: %s", err)
+			}
+			got, err := Eval(e, GlobalCtx())
+			if err == nil {
+				t.Fatalf("Expected error, got %s", got)
+			}
+			if !strings.Contains(err.Error(), test.want) {
+				t.Errorf("Wanted error message containing %q, got: %s", test.want, err)
+			}
+		})
+	}
+}

@@ -40,21 +40,29 @@ func (l *fullyEvaluated) lazyImpl() {}
 type Ctx struct {
 	env    map[string]lazyVal // let vars and fields of the current record / module.
 	active map[string]bool    // To detect evaluation cycles
+	types  map[string]*Typ    // Known types
 	parent *Ctx               // Parent context (e.g. of the parent record).
 }
 
 func NewCtx() *Ctx {
-	return &Ctx{env: make(map[string]lazyVal), active: make(map[string]bool), parent: nil}
+	return ChildCtx(nil)
 }
 
 func ChildCtx(parent *Ctx) *Ctx {
-	return &Ctx{env: make(map[string]lazyVal), active: make(map[string]bool), parent: parent}
+	return &Ctx{
+		env:    make(map[string]lazyVal),
+		active: make(map[string]bool),
+		types:  make(map[string]*Typ),
+		parent: parent}
 }
 
 func GlobalCtx() *Ctx {
 	ctx := NewCtx()
 	for _, builtin := range builtinFunctions {
 		ctx.store(builtin.Name, builtin)
+	}
+	for _, typ := range builtinTypes {
+		ctx.defineType(typ.Id, typ)
 	}
 	return ctx
 }
@@ -68,6 +76,17 @@ func (ctx *Ctx) Lookup(v string) (lazyVal, *Ctx) {
 		c = c.parent
 	}
 	return nil, nil // Not found
+}
+
+func (ctx *Ctx) LookupType(typeId string) *Typ {
+	c := ctx
+	for c != nil {
+		if typ, ok := c.types[typeId]; ok {
+			return typ
+		}
+		c = c.parent
+	}
+	return nil // Not found
 }
 
 func (ctx *Ctx) isActive(v string) bool {
@@ -86,6 +105,10 @@ func (ctx *Ctx) store(v string, val Val) {
 
 func (ctx *Ctx) storeExpr(v string, expr Expr) {
 	ctx.env[v] = &lazyExpr{expr: expr}
+}
+
+func (ctx *Ctx) defineType(name string, typ *Typ) {
+	ctx.types[name] = typ
 }
 
 type EvalError struct {
@@ -133,6 +156,12 @@ type NativeFuncVal struct {
 type FuncExprVal struct {
 	F   *FuncExpr
 	ctx *Ctx // "Closure": Context captured at function declaration
+}
+
+type TypedVal struct {
+	V    Val
+	T    *Typ
+	Unit int // Index into the T.Units. 0 if T has no units.
 }
 
 func (f *NativeFuncVal) Call(args []Val, ctx *Ctx) (Val, error) {
@@ -192,6 +221,10 @@ func (r *NativeFuncVal) Bool() bool {
 func (r *FuncExprVal) Bool() bool {
 	return true
 }
+func (v TypedVal) Bool() bool {
+	// User defined types for now cannot overwrite the truthiness of values.
+	return v.V.Bool()
+}
 
 func (x IntVal) String() string {
 	return strconv.FormatInt(int64(x), 10)
@@ -220,6 +253,9 @@ func (f *NativeFuncVal) String() string {
 
 func (f *FuncExprVal) String() string {
 	return fmt.Sprintf("<func @%d:%d>", f.F.Pos(), f.F.End())
+}
+func (v TypedVal) String() string {
+	return fmt.Sprintf("%s(%s)", v.T.Id, v.V.String())
 }
 
 // Binary operations on Val.
@@ -558,6 +594,16 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 			return Eval(e.X, ctx)
 		}
 		return Eval(e.Y, ctx)
+	case *TypedExpr:
+		val, err := Eval(e.X, ctx)
+		if err != nil {
+			return nil, err
+		}
+		typ := ctx.LookupType(e.T.TypeId())
+		if typ == nil {
+			return nil, &EvalError{pos: e.Pos(), msg: fmt.Sprintf("unknown type id: %s", e.T.TypeId())}
+		}
+		return convertType(val, typ, ctx, e.Pos())
 	}
 	return nil, &EvalError{pos: expr.Pos(), msg: fmt.Sprintf("not implemented: %T", expr)}
 }
