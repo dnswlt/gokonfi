@@ -56,3 +56,26 @@ func TestIsnil(t *testing.T) {
 		})
 	}
 }
+
+func TestTypeof(t *testing.T) {
+	tests := []struct {
+		input Val
+		want  string
+	}{
+		{input: BoolVal(true), want: "bool"},
+		{input: IntVal(1), want: "int"},
+		{input: DoubleVal(1.), want: "double"},
+		{input: UnitVal{V: 1., F: 1., T: builtinTypeDuration}, want: "duration"},
+	}
+	for i, test := range tests {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			got, err := builtinTypeof([]Val{test.input}, nil)
+			if err != nil {
+				t.Fatalf("Error calling typeof: %s", err)
+			}
+			if got != StringVal(test.want) {
+				t.Errorf("Want: %q, got %v", test.want, got)
+			}
+		})
+	}
+}

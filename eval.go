@@ -187,6 +187,10 @@ type TypedVal struct {
 	T *Typ
 }
 
+func (v *TypedVal) TypeId() string {
+	return v.T.Id
+}
+
 func (f *NativeFuncVal) Call(args []Val, ctx *Ctx) (Val, error) {
 	// Negative arity means "accept any args".
 	if f.Arity >= 0 && len(args) != f.Arity {
@@ -262,9 +266,10 @@ func (v DoubleVal) String() string {
 }
 func (v UnitVal) String() string {
 	if n, ok := v.T.UnitName(v.F); ok {
-		return fmt.Sprintf("%s(%f)", n, v.V)
+		f := strconv.FormatFloat(v.V, 'f', -1, 64)
+		return f + "::" + n
 	}
-	// If we end up here, the interpreter has a bug.
+	// A UnitVal with an unknown unit is an interpreter bug.
 	log.Fatalf("UnitVal %s with invalid factor %f", v.TypeId(), v.F)
 	return ""
 }
@@ -433,6 +438,12 @@ func lessThan(x, y Val) (Val, error) {
 		if v, ok := y.(DoubleVal); ok {
 			return BoolVal(u < v), nil
 		}
+	} else if u, ok := x.(UnitVal); ok {
+		if v, ok := y.(UnitVal); ok {
+			if u.T == v.T {
+				return BoolVal(unitCompare(u, v) < 0), nil
+			}
+		}
 	}
 	return nil, fmt.Errorf("incompatible types for <: %T and %T", x, y)
 }
@@ -445,8 +456,14 @@ func lessEq(x, y Val) (Val, error) {
 		if v, ok := y.(DoubleVal); ok {
 			return BoolVal(u <= v), nil
 		}
+	} else if u, ok := x.(UnitVal); ok {
+		if v, ok := y.(UnitVal); ok {
+			if u.T == v.T {
+				return BoolVal(unitCompare(u, v) <= 0), nil
+			}
+		}
 	}
-	return nil, fmt.Errorf("incompatible types for <: %T and %T", x, y)
+	return nil, fmt.Errorf("incompatible types for <=: %T and %T", x, y)
 }
 func greaterThan(x, y Val) (Val, error) {
 	if u, ok := x.(IntVal); ok {
@@ -457,8 +474,14 @@ func greaterThan(x, y Val) (Val, error) {
 		if v, ok := y.(DoubleVal); ok {
 			return BoolVal(u > v), nil
 		}
+	} else if u, ok := x.(UnitVal); ok {
+		if v, ok := y.(UnitVal); ok {
+			if u.T == v.T {
+				return BoolVal(unitCompare(u, v) > 0), nil
+			}
+		}
 	}
-	return nil, fmt.Errorf("incompatible types for <: %T and %T", x, y)
+	return nil, fmt.Errorf("incompatible types for >: %T and %T", x, y)
 }
 func greaterEq(x, y Val) (Val, error) {
 	if u, ok := x.(IntVal); ok {
@@ -469,8 +492,32 @@ func greaterEq(x, y Val) (Val, error) {
 		if v, ok := y.(DoubleVal); ok {
 			return BoolVal(u >= v), nil
 		}
+	} else if u, ok := x.(UnitVal); ok {
+		if v, ok := y.(UnitVal); ok {
+			if u.T == v.T {
+				return BoolVal(unitCompare(u, v) >= 0), nil
+			}
+		}
 	}
-	return nil, fmt.Errorf("incompatible types for <: %T and %T", x, y)
+	return nil, fmt.Errorf("incompatible types for >=: %T and %T", x, y)
+}
+
+func unitCompare(u, v UnitVal) int {
+	if u.T != v.T {
+		log.Fatalf("unitCompare: arguments must be of same type, got %s and %s", u.TypeId(), v.TypeId())
+	}
+	x, y := u.V, v.V
+	if u.F < v.F {
+		y = v.V * (v.F / u.F)
+	} else if u.F > v.F {
+		x = u.V * (u.F / v.F)
+	}
+	if x < y {
+		return -1
+	} else if x == y {
+		return 0
+	}
+	return 1
 }
 
 // Unary operations on Val.

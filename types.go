@@ -2,7 +2,6 @@ package gokonfi
 
 import (
 	"fmt"
-	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -96,34 +95,43 @@ var (
 )
 
 func init() {
-	builtinTypeDuration.Convert.(*NativeFuncVal).F = builtinTypeDurationConvert
+	// Initialize Convert function(s) here to avoid a cyclic dependency.
+	builtinTypeDuration.Convert.(*NativeFuncVal).F = func(args []Val, ctx *Ctx) (Val, error) {
+		return builtinUnitTypeConvert(builtinTypeDuration, args, ctx)
+	}
 	// TODO: this sorting requirement is a bit silly.
 	sort.Slice(builtinTypeDuration.Units, func(i, j int) bool {
 		return builtinTypeDuration.Units[i].Name < builtinTypeDuration.Units[j].Name
 	})
 }
 
-func builtinTypeDurationConvert(args []Val, ctx *Ctx) (Val, error) {
+func builtinUnitTypeConvert(typ *Typ, args []Val, ctx *Ctx) (Val, error) {
 	if len(args) != 2 {
-		log.Fatalf("duration.Convert: want 2 arguments, got %d", len(args))
-		return nil, nil
+		return nil, fmt.Errorf("%s.Convert: want 2 arguments, got %d", typ.Id, len(args))
 	}
 	unit, ok := args[0].(StringVal)
 	if !ok {
-		log.Fatalf("duration.Convert: want 1st argument as StringVal, got %T", args[0])
-		return nil, nil
+		return nil, fmt.Errorf("%s.Convert: want 1st argument as StringVal, got %T", typ.Id, args[0])
 	}
-	f, ok := builtinTypeDuration.UnitFactor(string(unit))
+	f, ok := typ.UnitFactor(string(unit))
 	if !ok {
-		return nil, fmt.Errorf("duration.Convert: invalid unit %s for duration", unit)
+		return nil, fmt.Errorf("%s.Convert: invalid unit %s", typ.Id, unit)
 	}
 	switch v := args[1].(type) {
 	case DoubleVal:
-		return UnitVal{V: float64(v), F: f, T: builtinTypeDuration}, nil
+		return UnitVal{V: float64(v), F: f, T: typ}, nil
 	case IntVal:
-		return UnitVal{V: float64(v), F: f, T: builtinTypeDuration}, nil
+		return UnitVal{V: float64(v), F: f, T: typ}, nil
+	case UnitVal:
+		if v.T == typ {
+			if v.F == f {
+				// same unit as before, nothing to do.
+				return v, nil
+			}
+			return UnitVal{V: v.V * (v.F / f), F: f, T: v.T}, nil
+		}
 	}
-	return nil, fmt.Errorf("duration.Convert: cannot convert type %T to duration", args[1])
+	return nil, fmt.Errorf("%s.Convert: cannot convert from type %T", typ.Id, args[1])
 }
 
 func convertType(val Val, typeName string, ctx *Ctx, pos token.Pos) (Val, error) {
@@ -194,7 +202,8 @@ func convertType(val Val, typeName string, ctx *Ctx, pos token.Pos) (Val, error)
 			return val, nil
 		}
 	case UnitVal:
-		// UnitVal is converted to int/double as its value in the current multiple.
+		// UnitVal is converted to int/double as its value in the current multiple,
+		// unless the unit defines its own coversion function (like builtin ones do).
 		switch typ {
 		case builtinTypeInt:
 			return IntVal(v.V), nil

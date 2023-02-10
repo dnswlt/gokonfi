@@ -191,11 +191,15 @@ func builtinSubstr(args []Val, ctx *Ctx) (Val, error) {
 // typeof(x any) string
 func builtinTypeof(args []Val, ctx *Ctx) (Val, error) {
 	typeof := func(s Val) string {
-		switch s.(type) {
+		switch t := s.(type) {
 		case IntVal:
 			return "int"
 		case DoubleVal:
 			return "double"
+		case UnitVal:
+			return t.TypeId()
+		case *TypedVal:
+			return t.TypeId()
 		case StringVal:
 			return "string"
 		case BoolVal:

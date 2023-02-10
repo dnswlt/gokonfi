@@ -491,10 +491,24 @@ func TestDurationUnit(t *testing.T) {
 		{name: "hourMinusMin", input: "(1::hours - 30::minutes)", want: u(30, "minutes")},
 		{name: "dayMinusDay", input: "(365::days - 30::days)", want: u(335, "days")},
 		{name: "dayMinusDay", input: "(365::days - (24 * 30)::hours)", want: u(335*24, "hours")},
-		{name: "dayMinusDay", input: "3 * 10::days", want: u(30, "days")},
-		// {name: "int", input: "(7::minutes + 3::seconds)::int", want: IntVal(7*60 + 3)},
-		// {name: "plusd", input: "(7::minutes + 3::seconds)::double", want: DoubleVal(7*60 + 3)},
-		// {name: "plusb", input: "7::minutes + 3::seconds == (7*60+3)::seconds", want: BoolVal(true)},
+		{name: "dayTimesN", input: "3 * 10::days", want: u(30, "days")},
+		{name: "nTimesDay", input: "10::days * 3", want: u(30, "days")},
+		// Division does not change the unit multiplier:
+		{name: "millisDivN", input: "10::millis / 100", want: u(0.1, "millis")},
+		{name: "millisDivN", input: "str(10::millis)", want: StringVal("10::millis")},
+		// Casting to int yields the value in the given unit multiple:
+		{name: "millisDivN", input: "(10::minutes)::int", want: IntVal(10)},
+		{name: "plusd", input: "(7::minutes + 3::seconds)::double", want: DoubleVal(7*60 + 3)},
+		{name: "plusb", input: "7::minutes + 3::seconds == (7*60+3)::seconds", want: BoolVal(true)},
+		// Comparisons
+		{name: "cmp.lt", input: "7::minutes < 7::hours", want: BoolVal(true)},
+		{name: "cmp.lt2", input: "1::minutes < 61::seconds", want: BoolVal(true)},
+		{name: "cmp.gt", input: "7::minutes > 8::seconds", want: BoolVal(true)},
+		{name: "cmp.le", input: "1::minutes <= 60::seconds", want: BoolVal(true)},
+		{name: "cmp.ge", input: "1::days >= 1::nanos", want: BoolVal(true)},
+		{name: "cmp.eq", input: "1::days == (24::hours)::days", want: BoolVal(true)},
+		// 1 day is not the same as 24 hours -- the multiples are different!
+		{name: "cmp.neq", input: "1::days != 24::hours", want: BoolVal(true)},
 	}
 	opts := []cmp.Option{
 		cmpopts.IgnoreFields(Typ{}, "Convert"),
@@ -531,6 +545,7 @@ func TestEvalTypedExprError(t *testing.T) {
 		{name: "invalid", input: `1::doesnotexist`, want: "unknown type"},
 		{name: "duration", input: `1::seconds + 3`, want: "incompatible types"},
 		{name: "daySquared", input: "3::days * 10::days", want: "incompatible types"},
+		{name: "dayDivided", input: "3::days / 10::days", want: "incompatible types"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
