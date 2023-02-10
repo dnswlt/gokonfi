@@ -7,6 +7,7 @@ import (
 	"unsafe"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 func TestEvalArithmeticExpr(t *testing.T) {
@@ -467,7 +468,51 @@ func TestEvalTypedExpr(t *testing.T) {
 				t.Fatalf("Failed to evaluate: %s", err)
 			}
 			if diff := cmp.Diff(test.want, got); diff != "" {
-				t.Errorf("List mismatch (-want +got):\n%s", diff)
+				t.Errorf("Value mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestDurationUnit(t *testing.T) {
+	u := func(x float64, name string) UnitVal {
+		if f, found := builtinTypeDuration.UnitFactor(name); found {
+			return UnitVal{V: x, F: f, T: builtinTypeDuration}
+		}
+		t.Fatalf("invalid unit multiple name: %s", name)
+		return UnitVal{}
+	}
+	tests := []struct {
+		name  string
+		input string
+		want  Val
+	}{
+		{name: "minPlusSec", input: "(7::minutes + 3::seconds)", want: u(7*60+3, "seconds")},
+		{name: "hourMinusMin", input: "(1::hours - 30::minutes)", want: u(30, "minutes")},
+		{name: "dayMinusDay", input: "(365::days - 30::days)", want: u(335, "days")},
+		{name: "dayMinusDay", input: "(365::days - (24 * 30)::hours)", want: u(335*24, "hours")},
+		{name: "dayMinusDay", input: "3 * 10::days", want: u(30, "days")},
+		// {name: "int", input: "(7::minutes + 3::seconds)::int", want: IntVal(7*60 + 3)},
+		// {name: "plusd", input: "(7::minutes + 3::seconds)::double", want: DoubleVal(7*60 + 3)},
+		// {name: "plusb", input: "7::minutes + 3::seconds == (7*60+3)::seconds", want: BoolVal(true)},
+	}
+	opts := []cmp.Option{
+		cmpopts.IgnoreFields(Typ{}, "Convert"),
+		cmpopts.IgnoreFields(Typ{}, "Unwrap"),
+		cmpopts.IgnoreFields(Typ{}, "Validate"),
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			e, err := parse(test.input)
+			if err != nil {
+				t.Fatalf("Cannot parse expression: %s", err)
+			}
+			got, err := Eval(e, GlobalCtx())
+			if err != nil {
+				t.Fatalf("Failed to evaluate: %s", err)
+			}
+			if diff := cmp.Diff(test.want, got, opts...); diff != "" {
+				t.Errorf("Value mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -483,7 +528,9 @@ func TestEvalTypedExprError(t *testing.T) {
 		{name: "s2i-prefix", input: `"3i"::int`, want: "cannot convert"},
 		{name: "nil-int", input: `nil::int`, want: "cannot convert"},
 		{name: "rec-int", input: `{x: 0}::int`, want: "cannot convert"},
-		{name: "invalid", input: `1::doesnotexist`, want: "unknown type id"},
+		{name: "invalid", input: `1::doesnotexist`, want: "unknown type"},
+		{name: "duration", input: `1::seconds + 3`, want: "incompatible types"},
+		{name: "daySquared", input: "3::days * 10::days", want: "incompatible types"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -496,7 +543,7 @@ func TestEvalTypedExprError(t *testing.T) {
 				t.Fatalf("Expected error, got %s", got)
 			}
 			if !strings.Contains(err.Error(), test.want) {
-				t.Errorf("Wanted error message containing %q, got: %s", test.want, err)
+				t.Errorf("Wanted error message containing %q, got: %q", test.want, err)
 			}
 		})
 	}

@@ -62,7 +62,13 @@ func GlobalCtx() *Ctx {
 		ctx.store(builtin.Name, builtin)
 	}
 	for _, typ := range builtinTypes {
-		ctx.defineType(typ.Id, typ)
+		if typ.IsUnit() {
+			for _, unit := range typ.Units {
+				ctx.defineUnit(unit.Name, typ)
+			}
+		} else {
+			ctx.defineType(typ.Id, typ)
+		}
 	}
 	return ctx
 }
@@ -111,6 +117,10 @@ func (ctx *Ctx) defineType(name string, typ *Typ) {
 	ctx.types[name] = typ
 }
 
+func (ctx *Ctx) defineUnit(name string, typ *Typ) {
+	ctx.types[name] = typ
+}
+
 type EvalError struct {
 	pos token.Pos
 	msg string
@@ -142,6 +152,20 @@ type ListVal struct {
 
 type IntVal int64
 type DoubleVal float64
+
+// A UnitVal is used to deal with "typed numbers", numbers that have
+// units such as distance in meters, number of bytes, or time duration.
+// UnitVal should be used as a value type, and passed along as such.
+type UnitVal struct {
+	V float64 // Value, in the given unit multiple. (E.g., V == 2. and F == 1e3 represents 2e3.)
+	F float64 // Multiple or submultiple of the unit.
+	T *Typ    // The unit's type.
+}
+
+func (v *UnitVal) TypeId() string {
+	return v.T.Id
+}
+
 type BoolVal bool
 type StringVal string
 type NilVal struct{}
@@ -159,9 +183,8 @@ type FuncExprVal struct {
 }
 
 type TypedVal struct {
-	V    Val
-	T    *Typ
-	Unit int // Index into the T.Units. 0 if T has no units.
+	V Val
+	T *Typ
 }
 
 func (f *NativeFuncVal) Call(args []Val, ctx *Ctx) (Val, error) {
@@ -172,7 +195,7 @@ func (f *NativeFuncVal) Call(args []Val, ctx *Ctx) (Val, error) {
 	return f.F(args, ctx)
 }
 
-func (f *FuncExprVal) Call(args []Val, ctx *Ctx) (Val, error) {
+func (f *FuncExprVal) Call(args []Val, _ *Ctx) (Val, error) {
 	arity := len(f.F.Params)
 	if len(args) != arity {
 		return nil, fmt.Errorf("wrong number of arguments for %s: got %d want %d", f.String(), len(args), arity)
@@ -186,6 +209,7 @@ func (f *FuncExprVal) Call(args []Val, ctx *Ctx) (Val, error) {
 
 func (v IntVal) valImpl()         {}
 func (v DoubleVal) valImpl()      {}
+func (v UnitVal) valImpl()        {}
 func (v BoolVal) valImpl()        {}
 func (v StringVal) valImpl()      {}
 func (v NilVal) valImpl()         {}
@@ -193,12 +217,16 @@ func (v *RecVal) valImpl()        {}
 func (v *ListVal) valImpl()       {}
 func (v *NativeFuncVal) valImpl() {}
 func (v *FuncExprVal) valImpl()   {}
+func (v *TypedVal) valImpl()      {}
 
 func (x IntVal) Bool() bool {
 	return x != 0
 }
 func (v DoubleVal) Bool() bool {
 	return v != 0
+}
+func (v UnitVal) Bool() bool {
+	return v.V != 0
 }
 func (b BoolVal) Bool() bool {
 	return bool(b)
@@ -232,6 +260,15 @@ func (x IntVal) String() string {
 func (v DoubleVal) String() string {
 	return strconv.FormatFloat(float64(v), 'f', -1, 64)
 }
+func (v UnitVal) String() string {
+	if n, ok := v.T.UnitName(v.F); ok {
+		return fmt.Sprintf("%s(%f)", n, v.V)
+	}
+	// If we end up here, the interpreter has a bug.
+	log.Fatalf("UnitVal %s with invalid factor %f", v.TypeId(), v.F)
+	return ""
+}
+
 func (b BoolVal) String() string {
 	return strconv.FormatBool(bool(b))
 }
@@ -250,64 +287,115 @@ func (r *ListVal) String() string {
 func (f *NativeFuncVal) String() string {
 	return fmt.Sprintf("<builtin %s>", f.Name)
 }
-
 func (f *FuncExprVal) String() string {
 	return fmt.Sprintf("<func @%d:%d>", f.F.Pos(), f.F.End())
 }
 func (v TypedVal) String() string {
+	// For now, user defined types cannot override the String() method.
 	return fmt.Sprintf("%s(%s)", v.T.Id, v.V.String())
 }
 
 // Binary operations on Val.
 
 func plus(x, y Val) (Val, error) {
-	if u, ok := x.(IntVal); ok {
+	switch u := x.(type) {
+	case IntVal:
 		if v, ok := y.(IntVal); ok {
 			return u + v, nil
 		}
-	} else if u, ok := x.(StringVal); ok {
+	case StringVal:
 		if v, ok := y.(StringVal); ok {
 			return u + v, nil
 		}
-	} else if u, ok := x.(DoubleVal); ok {
+	case DoubleVal:
 		if v, ok := y.(DoubleVal); ok {
 			return u + v, nil
+		}
+	case UnitVal:
+		if v, ok := y.(UnitVal); ok {
+			if u.T != v.T {
+				return nil, fmt.Errorf("incompatible unit types for +: %s and %s", u.TypeId(), v.TypeId())
+			}
+			if u.F == v.F {
+				return UnitVal{V: u.V + v.V, F: u.F, T: u.T}, nil
+			} else if u.F < v.F {
+				// 1 mm(1e-3) + 1 cm(1e-2) ==> 11 mm(1e-3)
+				return UnitVal{V: u.V + v.V*(v.F/u.F), F: u.F, T: u.T}, nil
+			}
+			// u.F > v.F
+			return UnitVal{V: u.V*(u.F/v.F) + v.V, F: v.F, T: v.T}, nil
 		}
 	}
 	return nil, fmt.Errorf("incompatible types for +: %T and %T", x, y)
 }
 func minus(x, y Val) (Val, error) {
-	if u, ok := x.(IntVal); ok {
+	switch u := x.(type) {
+	case IntVal:
 		if v, ok := y.(IntVal); ok {
 			return u - v, nil
 		}
-	} else if u, ok := x.(DoubleVal); ok {
+	case DoubleVal:
 		if v, ok := y.(DoubleVal); ok {
 			return u - v, nil
+		}
+	case UnitVal:
+		if v, ok := y.(UnitVal); ok {
+			if u.T != v.T {
+				return nil, fmt.Errorf("incompatible unit types for -: %s and %s", u.TypeId(), v.TypeId())
+			}
+			if u.F == v.F {
+				return UnitVal{V: u.V - v.V, F: u.F, T: u.T}, nil
+			} else if u.F < v.F {
+				return UnitVal{V: u.V - v.V*(v.F/u.F), F: u.F, T: u.T}, nil
+			}
+			// u.F > v.F
+			return UnitVal{V: u.V*(u.F/v.F) - v.V, F: v.F, T: v.T}, nil
 		}
 	}
 	return nil, fmt.Errorf("incompatible types for -: %T and %T", x, y)
 }
 func times(x, y Val) (Val, error) {
-	if u, ok := x.(IntVal); ok {
+	switch u := x.(type) {
+	case IntVal:
 		if v, ok := y.(IntVal); ok {
 			return u * v, nil
 		}
-	} else if u, ok := x.(DoubleVal); ok {
+		if v, ok := y.(UnitVal); ok {
+			return UnitVal{V: float64(u) * v.V, F: v.F, T: v.T}, nil
+		}
+	case DoubleVal:
 		if v, ok := y.(DoubleVal); ok {
 			return u * v, nil
+		}
+		if v, ok := y.(UnitVal); ok {
+			return UnitVal{V: float64(u) * v.V, F: v.F, T: v.T}, nil
+		}
+	case UnitVal:
+		if v, ok := y.(IntVal); ok {
+			return UnitVal{V: u.V * float64(v), F: u.F, T: u.T}, nil
+		}
+		if v, ok := y.(DoubleVal); ok {
+			return UnitVal{V: u.V * float64(v), F: u.F, T: u.T}, nil
 		}
 	}
 	return nil, fmt.Errorf("incompatible types for *: %T and %T", x, y)
 }
 func div(x, y Val) (Val, error) {
-	if u, ok := x.(IntVal); ok {
+	switch u := x.(type) {
+	case IntVal:
 		if v, ok := y.(IntVal); ok {
 			return u / v, nil
 		}
-	} else if u, ok := x.(DoubleVal); ok {
+	case DoubleVal:
 		if v, ok := y.(DoubleVal); ok {
 			return u / v, nil
+		}
+	case UnitVal:
+		if v, ok := y.(IntVal); ok {
+			return UnitVal{V: u.V / float64(v), F: u.F, T: u.T}, nil
+		}
+		if v, ok := y.(DoubleVal); ok {
+			return UnitVal{V: u.V / float64(v), F: u.F, T: u.T}, nil
 		}
 	}
 	return nil, fmt.Errorf("incompatible types for /: %T and %T", x, y)
@@ -318,7 +406,7 @@ func modulo(x, y Val) (Val, error) {
 			return u % v, nil
 		}
 	}
-	return nil, fmt.Errorf("incompatible types for /: %T and %T", x, y)
+	return nil, fmt.Errorf("incompatible types for %%: %T and %T", x, y)
 }
 func logicalAnd(x, y Val) (Val, error) {
 	return BoolVal(x.Bool() && y.Bool()), nil
@@ -387,11 +475,13 @@ func greaterEq(x, y Val) (Val, error) {
 
 // Unary operations on Val.
 func unaryMinus(x Val) (Val, error) {
-	if u, ok := x.(IntVal); ok {
+	switch u := x.(type) {
+	case IntVal:
 		return -u, nil
-
-	} else if u, ok := x.(DoubleVal); ok {
+	case DoubleVal:
 		return -u, nil
+	case UnitVal:
+		return UnitVal{V: -u.V, F: u.F, T: u.T}, nil
 	}
 	return nil, fmt.Errorf("incompatible type for unary -: %T", x)
 }
@@ -599,11 +689,7 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		if err != nil {
 			return nil, err
 		}
-		typ := ctx.LookupType(e.T.TypeId())
-		if typ == nil {
-			return nil, &EvalError{pos: e.Pos(), msg: fmt.Sprintf("unknown type id: %s", e.T.TypeId())}
-		}
-		return convertType(val, typ, ctx, e.Pos())
+		return convertType(val, e.T.TypeId(), ctx, e.Pos())
 	}
 	return nil, &EvalError{pos: expr.Pos(), msg: fmt.Sprintf("not implemented: %T", expr)}
 }

@@ -30,6 +30,12 @@ func (xs *ListVal) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+func (t UnitVal) MarshalJSON() ([]byte, error) {
+	// json.Marshal will always HTML-encode < > &, so we use this "workaround" :(
+	// Creating a new encoder for each (nested) record is probably not very fast.
+	return json.Marshal(t.V)
+}
+
 func (r NilVal) MarshalJSON() ([]byte, error) {
 	return json.Marshal(nil)
 }
