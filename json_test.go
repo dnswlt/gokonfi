@@ -20,7 +20,7 @@ func TestEncodeAsJson(t *testing.T) {
 		// Don't want any pesky HTML escaping for < and >
 		{input: "{x: '<>'}", want: `{"x":"<>"}`},
 		{input: "['<>']", want: `["<>"]`},
-		{input: `7::minutes`, want: `7`},
+		{input: `{x: 7::minutes y: 7::hours}`, want: `{"x":7,"y":7}`},
 	}
 	for i, test := range tests {
 		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {

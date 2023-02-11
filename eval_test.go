@@ -141,6 +141,7 @@ func TestEvalRecExpr(t *testing.T) {
 	}{
 		{input: "{x: 1}.x", want: IntVal(1)},
 		{input: "{x: 1 y: {a: 10 b: a}}.y.b", want: IntVal(10)},
+		{input: "{x: y y: z z: 1}.y", want: IntVal(1)},
 		{input: "{x: 1 y: {a: 10 b: a + x}}.y.b", want: IntVal(11)},
 		{input: "len({x: 1} @ {y: 2})", want: IntVal(2)},
 		{input: "({y: 1} @ {y: 2}).y", want: IntVal(2)},
@@ -430,7 +431,7 @@ func TestEvalErrors(t *testing.T) {
 }
 
 func TestSizeofVal(t *testing.T) {
-	// Some tests showing that RecVal and ListVal are small enough
+	// Some tests showing that RecVal, UnitVal, ListVal are small enough
 	// to be passed by value.
 	if unsafe.Sizeof((*int)(nil)) != 8 {
 		t.Skip("Skipping Sizeof tests on non-64bit architecture")
@@ -440,6 +441,9 @@ func TestSizeofVal(t *testing.T) {
 	}
 	if got := unsafe.Sizeof(RecVal{}); got != 8 {
 		t.Errorf("Want size 8 for RecVal, got %d", got)
+	}
+	if got := unsafe.Sizeof(UnitVal{}); got != 24 {
+		t.Errorf("Want size 24 for UnitVal, got %d", got)
 	}
 }
 

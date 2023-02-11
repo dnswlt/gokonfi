@@ -659,6 +659,7 @@ func (p *Parser) record() (Expr, error) {
 	recPos := p.previous().Pos
 	letVars := make(map[string]LetVar)
 	fields := make(map[string]RecField)
+	seen := make(map[string]bool)
 	for !p.AtEnd() {
 		if p.match(token.RightBrace) {
 			return &RecExpr{LetVars: letVars, Fields: fields, RecPos: recPos, RecEnd: p.previous().End}, nil
@@ -669,18 +670,20 @@ func (p *Parser) record() (Expr, error) {
 			if err != nil {
 				return nil, err
 			}
-			if _, ok := letVars[l.Name]; ok {
+			if seen[l.Name] {
 				return nil, &ParseError{tok: fTok, msg: fmt.Sprintf("duplicate let binding field '%s'", l.Name)}
 			}
+			seen[l.Name] = true
 			letVars[l.Name] = *l
 		} else {
 			f, err := p.recordField()
 			if err != nil {
 				return nil, err
 			}
-			if _, ok := fields[f.Name]; ok {
+			if seen[f.Name] {
 				return nil, &ParseError{tok: fTok, msg: fmt.Sprintf("duplicate record field '%s'", f.Name)}
 			}
+			seen[f.Name] = true
 			fields[f.Name] = *f
 		}
 	}

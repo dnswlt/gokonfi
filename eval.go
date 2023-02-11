@@ -103,6 +103,17 @@ func (ctx *Ctx) setActive(v string) {
 	ctx.active[v] = true
 }
 
+// Checks whether this particular context (ignoring its parents) has
+// fully evaluated variable x. If it does, returns it, else nil.
+func (ctx *Ctx) fullyEvaluated(v string) (val *fullyEvaluated, found bool) {
+	if x, ok := ctx.env[v]; ok {
+		if val, ok := x.(*fullyEvaluated); ok {
+			return val, true
+		}
+	}
+	return nil, false
+}
+
 func (ctx *Ctx) store(v string, val Val) {
 	ctx.env[v] = &fullyEvaluated{val}
 	// Once a value was stored, it's no longer actively being computed.
@@ -648,8 +659,11 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		for _, f := range e.Fields {
 			rctx.storeExpr(f.Name, f.X)
 		}
-		// Evaluate all fields.
+		// Evaluate all let vars and fields.
 		for _, lv := range e.LetVars {
+			if _, found := rctx.fullyEvaluated(lv.Name); found {
+				continue
+			}
 			rctx.setActive(lv.Name)
 			v, err := Eval(lv.X, rctx)
 			if err != nil {
@@ -659,6 +673,11 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		}
 		rec := NewRec()
 		for _, f := range e.Fields {
+			if v, found := rctx.fullyEvaluated(f.Name); found {
+				// Eval of some other field already required evaluation of this field.
+				rec.setField(f.Name, v.val)
+				continue
+			}
 			rctx.setActive(f.Name)
 			v, err := Eval(f.X, rctx)
 			if err != nil {

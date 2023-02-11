@@ -295,17 +295,35 @@ func TestParseRecordExpr(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			ts, err := scanTokens(test.input)
-			if err != nil {
-				t.Fatalf("Unexpected error while scanning the input: %s", err)
-			}
-			p := NewParser(ts)
-			got, err := p.Expression()
+			got, err := parse(test.input)
 			if err != nil {
 				t.Fatalf("Could not parse expression: %s", err)
 			}
 			if diff := cmp.Diff(test.want, got, opts...); diff != "" {
 				t.Fatalf("Record mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestParseRecordDuplicateFields(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{name: "duplicate_fields", input: "{x: 7 x: 8}", wantErr: true},
+		{name: "duplicate_lets", input: "{let x: 7 let x: 8}", wantErr: true},
+		{name: "duplicate_mix", input: "{let x: 7 x: 8}", wantErr: true},
+	}
+	// Ignore token positions when comparing Exprs.
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := parse(test.input)
+			if err != nil && !test.wantErr {
+				t.Errorf("Unwanted error: %s", err)
+			} else if err == nil && test.wantErr {
+				t.Errorf("Wanted error, got value %v", got.(sexpr).sexpr())
 			}
 		})
 	}
@@ -351,7 +369,7 @@ func TestParseFormatString(t *testing.T) {
 	}
 }
 
-func TestParseErrors(t *testing.T) {
+func TestParseErrorPos(t *testing.T) {
 	tests := []struct {
 		input    string
 		errAtPos int
