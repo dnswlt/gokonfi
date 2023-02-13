@@ -2,6 +2,7 @@ package gokonfi
 
 import (
 	"fmt"
+	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -212,4 +213,44 @@ func convertType(val Val, typeName string, ctx *Ctx, pos token.Pos) (Val, error)
 		}
 	}
 	return nil, &EvalError{pos: pos, msg: fmt.Sprintf("cannot convert value of type %T to %s", val, typ.Id)}
+}
+
+func typeCheck(val Val, t *Typ) error {
+	if t == nil {
+		// Type check against no type succeeds.
+		return nil
+	}
+	switch v := val.(type) {
+	case IntVal:
+		if t == builtinTypeInt {
+			return nil
+		}
+	case DoubleVal:
+		if t == builtinTypeDouble {
+			return nil
+		}
+	case StringVal:
+		if t == builtinTypeString {
+			return nil
+		}
+	case UnitVal:
+		if v.T == t {
+			return nil
+		}
+	}
+	return fmt.Errorf("incompatible types: %T :: %s", val, t.Id)
+}
+
+func conformUnits(u UnitVal, t *Typ, target string) UnitVal {
+	if u.T != t {
+		log.Fatalf("Cannot conform units of different types: %s <> %s", u.T.Id, t.Id)
+	}
+	f, found := t.UnitFactor(target)
+	if !found {
+		log.Fatalf("Invalid unit multiplier name: %s", target)
+	}
+	if u.F == f {
+		return u
+	}
+	return UnitVal{V: u.V * (u.F / f), F: f, T: t}
 }

@@ -146,7 +146,8 @@ func (e *EvalError) Pos() token.Pos {
 }
 
 type RecVal struct {
-	Fields map[string]Val
+	Fields     map[string]Val
+	FieldTypes map[string]*Typ // Optional type annotations per field.
 }
 
 func NewRec() *RecVal {
@@ -673,8 +674,18 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		}
 		rec := NewRec()
 		for _, f := range e.Fields {
+			var t *Typ = nil
+			if f.T != nil {
+				t = rctx.LookupType(f.T.TypeId())
+				if t == nil {
+					return nil, &EvalError{pos: f.T.Pos(), msg: fmt.Sprintf("unknown type %s for field %s", f.T.TypeId(), f.Name)}
+				}
+			}
 			if v, found := rctx.fullyEvaluated(f.Name); found {
 				// Eval of some other field already required evaluation of this field.
+				if err := typeCheck(v.val, t); err != nil {
+					return nil, &EvalError{pos: f.T.Pos(), msg: fmt.Sprintf("type error for field %s: %s", f.Name, err)}
+				}
 				rec.setField(f.Name, v.val)
 				continue
 			}
@@ -682,6 +693,14 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 			v, err := Eval(f.X, rctx)
 			if err != nil {
 				return nil, err
+			}
+			if t != nil {
+				if err := typeCheck(v, t); err != nil {
+					return nil, &EvalError{pos: f.T.Pos(), msg: fmt.Sprintf("type error for field %s: %s", f.Name, err)}
+				}
+				if u, ok := v.(UnitVal); ok {
+					v = conformUnits(u, t, f.T.TypeId())
+				}
 			}
 			rctx.store(f.Name, v)
 			rec.setField(f.Name, v)

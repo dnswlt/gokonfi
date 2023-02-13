@@ -174,6 +174,69 @@ func TestEvalRecExpr(t *testing.T) {
 	}
 }
 
+func TestEvalTypedRecField(t *testing.T) {
+	u := func(x float64, name string) UnitVal {
+		if f, found := builtinTypeDuration.UnitFactor(name); found {
+			return UnitVal{V: x, F: f, T: builtinTypeDuration}
+		}
+		t.Fatalf("invalid unit multiple name: %s", name)
+		return UnitVal{}
+	}
+	tests := []struct {
+		input string
+		want  Val
+	}{
+		{input: "{x::int: 1}.x", want: IntVal(1)},
+		{input: "{x::double: 1.}.x", want: DoubleVal(1)},
+		{input: "{x::hours: 120::minutes}.x", want: u(2, "hours")},
+		{input: "{x::seconds: 1500::millis}.x", want: u(1.5, "seconds")},
+		{input: "{x::string: 'a'}.x", want: StringVal("a")},
+	}
+	for i, test := range tests {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			e, err := parse(test.input)
+			if err != nil {
+				t.Fatalf("Cannot parse expression: %s", err)
+			}
+			got, err := Eval(e, GlobalCtx())
+			if err != nil {
+				t.Fatalf("Failed to evaluate: %s", err)
+			}
+			if got != test.want {
+				t.Errorf("Got %v, want %v", got, test.want)
+			}
+
+		})
+	}
+}
+
+func TestEvalTypedRecFieldError(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "int-duration", input: "{x::int: 1500::millis}", want: "incompatible types"},
+		{name: "int-double", input: "{x::int: 1500::double}", want: "incompatible types"},
+		{name: "int-list", input: "{x::int: []}", want: "incompatible types"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			e, err := parse(test.input)
+			if err != nil {
+				t.Fatalf("Cannot parse expression: %s", err)
+			}
+			_, err = Eval(e, GlobalCtx())
+			if err == nil {
+				t.Fatalf("Wanted error, got value")
+			}
+			if !strings.Contains(err.Error(), test.want) {
+				t.Errorf("Got error %q, wanted it to contain %q", err.Error(), test.want)
+			}
+		})
+	}
+}
+
 func TestEvalConditionalExpr(t *testing.T) {
 	tests := []struct {
 		input string
@@ -437,13 +500,13 @@ func TestSizeofVal(t *testing.T) {
 		t.Skip("Skipping Sizeof tests on non-64bit architecture")
 	}
 	if got := unsafe.Sizeof(ListVal{}); got != 24 {
-		t.Errorf("Want size 24 for ListVal, got %d", got)
+		t.Errorf("Unexpected size for ListVal, got %d", got)
 	}
-	if got := unsafe.Sizeof(RecVal{}); got != 8 {
-		t.Errorf("Want size 8 for RecVal, got %d", got)
+	if got := unsafe.Sizeof(RecVal{}); got != 16 {
+		t.Errorf("Unexpected size for RecVal: %d", got)
 	}
 	if got := unsafe.Sizeof(UnitVal{}); got != 24 {
-		t.Errorf("Want size 24 for UnitVal, got %d", got)
+		t.Errorf("Unexpected size for UnitVal, got %d", got)
 	}
 }
 
