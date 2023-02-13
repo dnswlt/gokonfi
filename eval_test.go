@@ -183,14 +183,19 @@ func TestEvalTypedRecField(t *testing.T) {
 		return UnitVal{}
 	}
 	tests := []struct {
+		name  string
 		input string
 		want  Val
 	}{
-		{input: "{x::int: 1}.x", want: IntVal(1)},
-		{input: "{x::double: 1.}.x", want: DoubleVal(1)},
-		{input: "{x::hours: 120::minutes}.x", want: u(2, "hours")},
-		{input: "{x::seconds: 1500::millis}.x", want: u(1.5, "seconds")},
-		{input: "{x::string: 'a'}.x", want: StringVal("a")},
+		{name: "int", input: "{x::int: 1}.x", want: IntVal(1)},
+		{name: "double", input: "{x::double: 1.}.x", want: DoubleVal(1)},
+		{name: "hours2minutes", input: "{x::hours: 120::minutes}.x", want: u(2, "hours")},
+		{name: "seconds2millis", input: "{x::seconds: 1500::millis}.x", want: u(1.5, "seconds")},
+		{name: "string", input: "{x::string: 'a'}.x", want: StringVal("a")},
+		{name: "bool", input: "{x::bool: 1 < 2}.x", want: BoolVal(true)},
+		{name: "merge", input: "({x::bool: true} @ {x: false}).x", want: BoolVal(false)},
+		// You can merge records with fields of different types only if the rhs has an explicit type:
+		{name: "merge-cast", input: "({x::bool: true} @ {x::int: 1}).x", want: IntVal(1)},
 	}
 	for i, test := range tests {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
@@ -211,14 +216,18 @@ func TestEvalTypedRecField(t *testing.T) {
 }
 
 func TestEvalTypedRecFieldError(t *testing.T) {
+	const incompatible = "incompatible types"
 	tests := []struct {
 		name  string
 		input string
 		want  string
 	}{
-		{name: "int-duration", input: "{x::int: 1500::millis}", want: "incompatible types"},
-		{name: "int-double", input: "{x::int: 1500::double}", want: "incompatible types"},
-		{name: "int-list", input: "{x::int: []}", want: "incompatible types"},
+		{name: "int-duration", input: "{x::int: 1500::millis}", want: incompatible},
+		{name: "int-double", input: "{x::int: 1500::double}", want: incompatible},
+		{name: "int-list", input: "{x::int: []}", want: incompatible},
+		{name: "bool-int", input: "{x::bool: 1}", want: incompatible},
+		// Cannot merge records with fields of different types if only lhs is typed:
+		{name: "merge", input: "({x::bool: true} @ {x: 1}).x", want: incompatible},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -226,9 +235,9 @@ func TestEvalTypedRecFieldError(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Cannot parse expression: %s", err)
 			}
-			_, err = Eval(e, GlobalCtx())
+			got, err := Eval(e, GlobalCtx())
 			if err == nil {
-				t.Fatalf("Wanted error, got value")
+				t.Fatalf("Wanted error, got value: %v", got)
 			}
 			if !strings.Contains(err.Error(), test.want) {
 				t.Errorf("Got error %q, wanted it to contain %q", err.Error(), test.want)
@@ -326,7 +335,7 @@ func TestEvalBuiltins(t *testing.T) {
 		{input: "typeof(len)", want: StringVal("builtin")},
 		{input: "typeof(func(){nil})", want: StringVal("func")},
 		{input: "typeof(true)", want: StringVal("bool")},
-		{input: "typeof({})", want: StringVal("record")},
+		{input: "typeof({})", want: StringVal("rec")},
 		{input: "typeof([1,2])", want: StringVal("list")},
 	}
 	for i, test := range tests {

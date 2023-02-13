@@ -47,11 +47,16 @@ func (t *Typ) UnitName(factor float64) (name string, found bool) {
 
 var (
 	// Predefine built-in types, so we can use == comparisons for those.
-	builtinTypeBool     = &Typ{Id: "bool"}
-	builtinTypeInt      = &Typ{Id: "int"}
-	builtinTypeDouble   = &Typ{Id: "double"}
-	builtinTypeString   = &Typ{Id: "string"}
-	builtinTypeDuration = &Typ{
+	builtinTypeBool       = &Typ{Id: "bool"}
+	builtinTypeInt        = &Typ{Id: "int"}
+	builtinTypeDouble     = &Typ{Id: "double"}
+	builtinTypeString     = &Typ{Id: "string"}
+	builtinTypeNil        = &Typ{Id: "nil"}
+	builtinTypeRec        = &Typ{Id: "rec"}
+	builtinTypeList       = &Typ{Id: "list"}
+	builtinTypeNativeFunc = &Typ{Id: "builtin"}
+	builtinTypeFuncExpr   = &Typ{Id: "func"}
+	builtinTypeDuration   = &Typ{
 		Id: "duration",
 		Convert: &NativeFuncVal{
 			Name:  "duration.Convert",
@@ -220,25 +225,10 @@ func typeCheck(val Val, t *Typ) error {
 		// Type check against no type succeeds.
 		return nil
 	}
-	switch v := val.(type) {
-	case IntVal:
-		if t == builtinTypeInt {
-			return nil
-		}
-	case DoubleVal:
-		if t == builtinTypeDouble {
-			return nil
-		}
-	case StringVal:
-		if t == builtinTypeString {
-			return nil
-		}
-	case UnitVal:
-		if v.T == t {
-			return nil
-		}
+	if t == val.Typ() {
+		return nil
 	}
-	return fmt.Errorf("incompatible types: %T :: %s", val, t.Id)
+	return fmt.Errorf("incompatible types: %s :: %s", val.Typ().Id, t.Id)
 }
 
 func conformUnits(u UnitVal, t *Typ, target string) UnitVal {

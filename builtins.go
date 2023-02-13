@@ -2,7 +2,6 @@ package gokonfi
 
 import (
 	"fmt"
-	"log"
 	"strings"
 )
 
@@ -190,34 +189,5 @@ func builtinSubstr(args []Val, ctx *Ctx) (Val, error) {
 
 // typeof(x any) string
 func builtinTypeof(args []Val, ctx *Ctx) (Val, error) {
-	typeof := func(s Val) string {
-		switch t := s.(type) {
-		case IntVal:
-			return "int"
-		case DoubleVal:
-			return "double"
-		case UnitVal:
-			return t.TypeId()
-		case *TypedVal:
-			return t.TypeId()
-		case StringVal:
-			return "string"
-		case BoolVal:
-			return "bool"
-		case NilVal:
-			return "nil"
-		case *RecVal:
-			return "record"
-		case *ListVal:
-			return "list"
-		case *NativeFuncVal:
-			return "builtin"
-		case *FuncExprVal:
-			return "func"
-		default:
-			log.Fatalf("typeof: missing type in switch: %T", s)
-			return "" // never reached
-		}
-	}(args[0])
-	return StringVal(typeof), nil
+	return StringVal(args[0].Typ().Id), nil
 }

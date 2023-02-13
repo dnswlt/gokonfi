@@ -11,6 +11,7 @@ import (
 type Val interface {
 	fmt.Stringer
 	Bool() bool
+	Typ() *Typ
 	valImpl()
 }
 
@@ -151,11 +152,14 @@ type RecVal struct {
 }
 
 func NewRec() *RecVal {
-	return &RecVal{Fields: make(map[string]Val)}
+	return &RecVal{Fields: make(map[string]Val), FieldTypes: make(map[string]*Typ)}
 }
 
-func (r *RecVal) setField(field string, val Val) {
+func (r *RecVal) setField(field string, val Val, typ *Typ) {
 	r.Fields[field] = val
+	if typ != nil {
+		r.FieldTypes[field] = typ
+	}
 }
 
 type ListVal struct {
@@ -310,6 +314,41 @@ func (f *FuncExprVal) String() string {
 func (v TypedVal) String() string {
 	// For now, user defined types cannot override the String() method.
 	return fmt.Sprintf("%s(%s)", v.T.Id, v.V.String())
+}
+
+func (x IntVal) Typ() *Typ {
+	return builtinTypeInt
+}
+func (v DoubleVal) Typ() *Typ {
+	return builtinTypeDouble
+}
+func (v UnitVal) Typ() *Typ {
+	return v.T
+}
+func (b BoolVal) Typ() *Typ {
+	return builtinTypeBool
+}
+func (s StringVal) Typ() *Typ {
+	return builtinTypeString
+}
+func (s NilVal) Typ() *Typ {
+	return builtinTypeNil
+}
+func (r *RecVal) Typ() *Typ {
+	return builtinTypeRec
+}
+func (r *ListVal) Typ() *Typ {
+	return builtinTypeList
+}
+func (r *NativeFuncVal) Typ() *Typ {
+	return builtinTypeNativeFunc
+}
+func (r *FuncExprVal) Typ() *Typ {
+	return builtinTypeFuncExpr
+}
+func (v TypedVal) Typ() *Typ {
+	// User defined types for now cannot overwrite the truthiness of values.
+	return v.T
 }
 
 // Binary operations on Val.
@@ -686,7 +725,7 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 				if err := typeCheck(v.val, t); err != nil {
 					return nil, &EvalError{pos: f.T.Pos(), msg: fmt.Sprintf("type error for field %s: %s", f.Name, err)}
 				}
-				rec.setField(f.Name, v.val)
+				rec.setField(f.Name, v.val, t)
 				continue
 			}
 			rctx.setActive(f.Name)
@@ -703,7 +742,7 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 				}
 			}
 			rctx.store(f.Name, v)
-			rec.setField(f.Name, v)
+			rec.setField(f.Name, v, t)
 		}
 		return rec, nil
 	case *ListExpr:
@@ -797,29 +836,49 @@ func mergeValues(x, y Val) (Val, error) {
 
 func mergeRecVal(x, y, r *RecVal) error {
 	// Copy fields only in x.
-	for f, v := range x.Fields {
+	for f, vx := range x.Fields {
 		if _, ok := y.Fields[f]; !ok {
-			r.setField(f, v)
+			r.setField(f, vx, x.FieldTypes[f])
 		}
 	}
 	// Copy fields only in y and merge common fields.
-	for f, v := range y.Fields {
-		if _, ok := x.Fields[f]; !ok {
+	for f, vy := range y.Fields {
+		if vx, ok := x.Fields[f]; !ok {
 			// Unique field of y.
-			r.setField(f, v)
+			r.setField(f, vy, y.FieldTypes[f])
 		} else {
 			// Common field.
-			if cy, ok := v.(*RecVal); !ok {
+			// If only x has a type annotation, only allow merging if y's value has the same type
+			// OR y has an explicit type annotation (i.e. interpret y's annotation as an explicit override).
+			tx, xHasType := x.FieldTypes[f]
+			ty, yHasType := y.FieldTypes[f]
+			if xHasType && !yHasType {
+				if err := typeCheck(vy, tx); err != nil {
+					return err
+				}
+			}
+			targetType := tx
+			if yHasType {
+				targetType = ty
+			}
+			// TODO: TypedVal is not properly supported here: we wouldn't recurse into a typed rec.
+			if _, ok := vx.(*TypedVal); ok {
+				return fmt.Errorf("merging TypedVal is not implemented")
+			}
+			if _, ok := vy.(*TypedVal); ok {
+				return fmt.Errorf("merging TypedVal is not implemented")
+			}
+			if ry, ok := vy.(*RecVal); !ok {
 				// y field is not a record, just take the value from y.
-				r.setField(f, v)
-			} else if cx, ok := x.Fields[f].(*RecVal); ok {
+				r.setField(f, vy, targetType)
+			} else if rx, ok := vx.(*RecVal); ok {
 				// x's field is a record, too: recurse.
 				cr := NewRec()
-				r.setField(f, cr)
-				mergeRecVal(cx, cy, cr)
+				r.setField(f, cr, targetType)
+				mergeRecVal(rx, ry, cr)
 			} else {
 				// x field is not a record, again just take the value from y.
-				r.setField(f, v)
+				r.setField(f, vy, targetType)
 			}
 		}
 	}
