@@ -96,8 +96,7 @@ func (e *FuncExpr) sexpr() string {
 }
 
 func scanTokens(input string) ([]token.Token, error) {
-	s := NewScanner(input)
-	return s.ScanAll()
+	return NewScanner(input, nil).ScanAll()
 }
 
 func parse(input string) (Expr, error) {

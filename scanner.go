@@ -29,14 +29,15 @@ var (
 // Scanner contains the full input and the current scanning state.
 type Scanner struct {
 	input string
-	mark  int // Used to keep track of the start of multi-character tokens.
-	pos   int // Next position in input to be scanned.
-	off   int // Offset of input[0] in a broader context. Nonzero only for child scanners.
+	mark  int         // Used to keep track of the start of multi-character tokens.
+	pos   int         // Next position in input to be scanned.
+	off   int         // Offset of input[0] in a broader context. Nonzero only for child scanners.
+	file  *token.File // The file (part of a FileSet) that this scanner is processing.
 }
 
 // Creates a new scanner from the given input.
-func NewScanner(input string) *Scanner {
-	return &Scanner{input: input}
+func NewScanner(input string, file *token.File) *Scanner {
+	return &Scanner{input: input, file: file}
 }
 
 // AtEnd returns true if the scanner has processed its input entirely.
@@ -58,6 +59,9 @@ func (s *Scanner) advance() rune {
 	}
 	r, size := utf8.DecodeRuneInString(s.input[s.pos:])
 	s.pos += size
+	if r == '\n' && s.file != nil {
+		s.file.AddLine(s.pos)
+	}
 	return r
 }
 
@@ -70,6 +74,7 @@ func (s *Scanner) peek() rune {
 }
 
 func (s *Scanner) match(expected rune) bool {
+	// TODO: avoid double (peek + advance) rune decoding.
 	if s.peek() == expected {
 		s.advance()
 		return true
@@ -97,7 +102,8 @@ func (s *Scanner) childScanner(start, end int) *Scanner {
 	if end >= len(s.input) {
 		end = len(s.input)
 	}
-	return &Scanner{input: s.input[start:end], off: start}
+	// Child scanners should not update .file.
+	return &Scanner{input: s.input[start:end], off: start, file: nil}
 }
 
 func (s *Scanner) tpos() token.Pos {
@@ -251,15 +257,16 @@ func (s *Scanner) ScanAll() ([]token.Token, error) {
 
 func (s *Scanner) eatline() {
 	for !s.AtEnd() {
-		c, sz := utf8.DecodeRuneInString(s.input[s.pos:])
-		s.pos += sz
-		if c == '\n' {
+		if s.advance() == '\n' {
 			return
 		}
 	}
 }
 
 func (s *Scanner) ident() (token.Token, error) {
+	// As an optimization this function does not use advance/peek.
+	// It therefore also does not modify s.file; if this method ever
+	// eats a newline character, it should update s.file, too.
 	cur := s.mark
 	for cur < len(s.input) {
 		r, size := utf8.DecodeRuneInString(s.input[cur:])

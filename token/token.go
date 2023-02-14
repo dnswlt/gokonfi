@@ -66,6 +66,9 @@ type Token struct {
 	Fmt *FormatStr
 }
 
+// Pos represents a (byte) offset into a File that is part of a FileSet.
+// This representation is very similar to the one used in the Go compiler:
+// https://cs.opensource.google/go/go/+/master:src/go/token/token.go
 type Pos int
 
 type Poser interface {
@@ -95,4 +98,33 @@ func (FormatStrPart) formatStrValueImpl()  {}
 
 type FormatStr struct {
 	Values []FormatStrValue
+}
+
+type File struct {
+	name  string // relative or absolute path of the file.
+	base  int    // offset of all positions (Pos) in this file in the FileSet that this File belongs to.
+	size  int    // size of the file, in bytes.
+	lines []int  // offsets of the first character in each line.
+}
+
+func (f *File) Name() string { return f.name }
+
+func (f *File) AddLine(offset int) {
+	f.lines = append(f.lines, offset)
+}
+
+type FileSet struct {
+	base  int // base for the next file
+	files []*File
+}
+
+func NewFileSet() *FileSet {
+	return &FileSet{}
+}
+
+func (fs *FileSet) AddFile(name string, size int) *File {
+	f := &File{name: name, base: fs.base, size: size, lines: []int{0}}
+	fs.files = append(fs.files, f)
+	fs.base += size
+	return f
 }

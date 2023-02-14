@@ -3,6 +3,7 @@ package gokonfi
 import (
 	"fmt"
 	"log"
+	"os"
 	"strconv"
 
 	"github.com/dnswlt/gokonfi/token"
@@ -31,6 +32,11 @@ func (e *ParseError) Error() string {
 
 func (e *ParseError) Pos() token.Pos {
 	return e.tok.Pos
+}
+
+type Module struct {
+	file *token.File
+	expr Expr
 }
 
 type Node interface {
@@ -294,6 +300,21 @@ func (p *Parser) failat(t token.Token, msg string, fmtArgs ...any) error {
 // AtEnd returns true if the parser has processed all tokens.
 func (p *Parser) AtEnd() bool {
 	return p.current >= len(p.tokens)-1
+}
+
+func ParseModule(file *token.File) (*Module, error) {
+	input, err := os.ReadFile(file.Name())
+	if err != nil {
+		return nil, err
+	}
+	ts, err := NewScanner(string(input), nil).ScanAll()
+	p := NewParser(ts)
+	// For now, a module is simply an expression.
+	e, err := p.Expression()
+	if err != nil {
+		return nil, err
+	}
+	return &Module{file: file, expr: e}, nil
 }
 
 // Parses an expression.

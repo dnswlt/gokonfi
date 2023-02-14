@@ -10,6 +10,10 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
+func newTestScanner(input string) *Scanner {
+	return NewScanner(input, nil)
+}
+
 func compareTokenTypes(t *testing.T, actual, expected []token.TokenType) {
 	if len(actual) != len(expected) {
 		t.Fatalf("Unexpected number of tokens: got %d, expected %d", len(actual), len(expected))
@@ -23,7 +27,7 @@ func compareTokenTypes(t *testing.T, actual, expected []token.TokenType) {
 
 func TestScanSymbols(t *testing.T) {
 	symbols := "+-*/(){}.:"
-	s := NewScanner(symbols)
+	s := newTestScanner(symbols)
 	tokenTypes := []token.TokenType{}
 	for !s.AtEnd() {
 		tok, err := s.NextToken()
@@ -68,7 +72,7 @@ func TestScanOperators(t *testing.T) {
 		{op: "||", want: token.LogicalOr},
 	}
 	for _, test := range tests {
-		s := NewScanner(test.op)
+		s := newTestScanner(test.op)
 		got, err := s.NextToken()
 		if err != nil {
 			t.Fatalf("Error scanning symbol: %s", err)
@@ -81,7 +85,7 @@ func TestScanOperators(t *testing.T) {
 
 func TestScanExpr(t *testing.T) {
 	symbols := "2 * (3 + 4)"
-	s := NewScanner(symbols)
+	s := newTestScanner(symbols)
 	tokenTypes := []token.TokenType{}
 	for !s.AtEnd() {
 		tok, err := s.NextToken()
@@ -96,7 +100,7 @@ func TestScanExpr(t *testing.T) {
 }
 
 func TestScanSkipsWhitespace(t *testing.T) {
-	s := NewScanner("     \t    \n   +\nx   \t\t\n   +")
+	s := newTestScanner("     \t    \n   +\nx   \t\t\n   +")
 	tokenTypes := []token.TokenType{}
 	for !s.AtEnd() {
 		tok, err := s.NextToken()
@@ -110,7 +114,7 @@ func TestScanSkipsWhitespace(t *testing.T) {
 }
 
 func TestScanUnknown(t *testing.T) {
-	s := NewScanner("3 $")
+	s := newTestScanner("3 $")
 	s.NextToken()
 	_, err := s.NextToken()
 	if err == nil {
@@ -125,7 +129,7 @@ func TestScanUnknown(t *testing.T) {
 
 func TestScanDouble(t *testing.T) {
 	for _, dstr := range []string{"1.23", ".01", "1.", "123.4", "1e9", "17.4e-19", "0.0"} {
-		s := NewScanner(dstr)
+		s := newTestScanner(dstr)
 		tok, err := s.NextToken()
 		if err != nil {
 			t.Fatalf("Error scanning double literal: %s", err)
@@ -144,7 +148,7 @@ func TestScanDouble(t *testing.T) {
 
 func TestScanInt(t *testing.T) {
 	for _, istr := range []string{"0", "9", "90", "1234"} {
-		s := NewScanner(istr)
+		s := newTestScanner(istr)
 		tok, err := s.NextToken()
 		if err != nil {
 			t.Fatalf("Error scanning int literal: %s", err)
@@ -163,7 +167,7 @@ func TestScanInt(t *testing.T) {
 }
 
 func TestScanIntRemainder(t *testing.T) {
-	s := NewScanner("1a")
+	s := newTestScanner("1a")
 	_, err := s.NextToken()
 	if err != nil {
 		t.Fatalf("Error scanning int literal: %s", err)
@@ -175,7 +179,7 @@ func TestScanIntRemainder(t *testing.T) {
 
 func TestScanIdentifiers(t *testing.T) {
 	for _, istr := range []string{"x", "y1", "_a", "_", "_1", "longWithUpper_100"} {
-		s := NewScanner(istr)
+		s := newTestScanner(istr)
 		tok, err := s.NextToken()
 		if err != nil {
 			t.Fatalf("Error scanning identifier: %s", err)
@@ -195,7 +199,7 @@ func TestScanIdentifiers(t *testing.T) {
 
 func TestScanIdentifiersInvalidChars(t *testing.T) {
 	for _, str := range []string{"x.a", "x$", "x?"} {
-		s := NewScanner(str)
+		s := newTestScanner(str)
 		s.NextToken()
 		if s.rem() != str[1:] {
 			t.Fatalf("Expected remainder %s, got %s", str[1:], s.rem())
@@ -217,7 +221,7 @@ func TestScanKeywords(t *testing.T) {
 		{"else", token.Else},
 		{"nil", token.Nil},
 	} {
-		s := NewScanner(td.input)
+		s := newTestScanner(td.input)
 		tok, err := s.NextToken()
 		if err != nil {
 			t.Fatalf("Error scanning keyword: %s", err)
@@ -249,7 +253,7 @@ func TestScanOnelineString(t *testing.T) {
 		{`"a\nb\tc\\\n\r\"\'"`, "a\nb\tc\\\n\r\"'"},
 	}
 	for _, td := range inputs {
-		s := NewScanner(td.input)
+		s := newTestScanner(td.input)
 		tok, err := s.NextToken()
 		if err != nil {
 			t.Fatalf("Error scanning identifier: %s", err)
@@ -277,7 +281,7 @@ func TestScanRawString(t *testing.T) {
 		{"`" + `no \n\r\t"' escape` + "`", `no \n\r\t"' escape`},
 	}
 	for _, td := range inputs {
-		s := NewScanner(td.input)
+		s := newTestScanner(td.input)
 		tok, err := s.NextToken()
 		if err != nil {
 			t.Fatalf("Error scanning identifier: %s", err)
@@ -307,7 +311,7 @@ func TestScanFormatString(t *testing.T) {
 	}
 	for i, test := range tests {
 		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
-			s := NewScanner(test.input)
+			s := newTestScanner(test.input)
 			tok, err := s.NextToken()
 			if err != nil {
 				t.Fatalf("Error scanning identifier: %s", err)
@@ -356,7 +360,7 @@ func TestScanFormatStringValue(t *testing.T) {
 	}
 	for i, test := range tests {
 		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
-			s := NewScanner(test.input)
+			s := newTestScanner(test.input)
 			tok, err := s.NextToken()
 			if err != nil {
 				t.Fatalf("Error scanning input: %s", err)
@@ -409,7 +413,7 @@ func TestScanErrors(t *testing.T) {
 	}
 	for i, test := range tests {
 		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {
-			toks, err := NewScanner(test.input).ScanAll()
+			toks, err := newTestScanner(test.input).ScanAll()
 			if err == nil {
 				t.Fatalf("expected error, got %v", toks)
 			}

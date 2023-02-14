@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/dnswlt/gokonfi"
-	"github.com/dnswlt/gokonfi/token"
 )
 
 var (
@@ -19,28 +18,12 @@ func init() {
 	flag.BoolVar(&printResult, "p", true, "print result to stdout")
 }
 
-func scanTokens(input string) ([]token.Token, error) {
-	s := gokonfi.NewScanner(input)
-	r := []token.Token{}
-	for {
-		t, err := s.NextToken()
-		if err != nil {
-			return nil, err
-		}
-		r = append(r, t)
-		if t.Typ == token.EndOfInput {
-			break
-		}
-	}
-	return r, nil
-}
-
 func evalFileAsExpression(filename string) (gokonfi.Val, error) {
 	input, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
-	ts, err := scanTokens(string(input))
+	ts, err := gokonfi.NewScanner(string(input), nil).ScanAll()
 	if err != nil {
 		return nil, err
 	}
