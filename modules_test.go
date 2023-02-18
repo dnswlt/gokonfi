@@ -79,6 +79,67 @@ func TestLoadModuleKonfipath(t *testing.T) {
 	}
 }
 
+func TestLoadModuleSubdir(t *testing.T) {
+	// load('sub/util') should work.
+	if testing.Short() {
+		// Don't run tests writing to disk in -short mode.
+		return
+	}
+	// Write modules to disk.
+	d := t.TempDir()
+	subd := path.Join(d, "sub")
+	os.Mkdir(subd, 0755)
+	rootPath := path.Join(d, "root.konfi")
+	rootModule := []byte(`
+	{
+		let m: load('sub/util')
+		x: m.one
+	}
+	`)
+	os.WriteFile(rootPath, rootModule, 0644)
+	utilPath := path.Join(subd, "util.konfi")
+	utilModule := []byte("{ one: 1 }")
+	os.WriteFile(utilPath, utilModule, 0644)
+	// Load module and check result.
+	m, err := LoadModule(rootPath, GlobalCtx())
+	if err != nil {
+		t.Fatalf("failed to load module: %s", err)
+	}
+	r, ok := m.body.(*RecVal)
+	if !ok {
+		t.Fatalf("expected *RecVal, got %T", m.body)
+	}
+	got, ok := r.Fields["x"]
+	if got != IntVal(1) {
+		t.Errorf("want 1, got: %v", got)
+	}
+}
+
+func TestLoadModuleNotFound(t *testing.T) {
+	if testing.Short() {
+		// Don't run tests writing to disk in -short mode.
+		return
+	}
+	// Write module to disk.
+	d := t.TempDir()
+	rootPath := path.Join(d, "root.konfi")
+	rootModule := []byte(`
+	{
+		m: load('doesnotexist')
+	}
+	`)
+	os.WriteFile(rootPath, rootModule, 0644)
+	// Load module and check result.
+	m, gotErr := LoadModule(rootPath, GlobalCtx())
+	if gotErr == nil {
+		t.Fatalf("wanted error, got: %v", m)
+	}
+	want := "not found"
+	if !strings.Contains(gotErr.Error(), want) {
+		t.Errorf("wanted error containing '%s', got: %s", want, gotErr)
+	}
+}
+
 func TestLoadModuleCycle(t *testing.T) {
 	// Cycle detection for two modules trying to load each other.
 	if testing.Short() {
