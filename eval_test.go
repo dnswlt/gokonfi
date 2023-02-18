@@ -31,7 +31,7 @@ func TestEvalArithmeticExpr(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Cannot parse expression: %s", err)
 			}
-			got, err := Eval(e, NewCtx())
+			got, err := Eval(e, EmptyCtx())
 			if err != nil {
 				t.Fatalf("Failed to evaluate: %s", err)
 			}
@@ -96,7 +96,7 @@ func TestEvalComparisonExpr(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Cannot parse expression: %s", err)
 			}
-			got, err := Eval(e, NewCtx())
+			got, err := Eval(e, EmptyCtx())
 			if err != nil {
 				t.Fatalf("Failed to evaluate: %s", err)
 			}
@@ -122,7 +122,7 @@ func TestEvalLogicalExpr(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Cannot parse expression: %s", err)
 			}
-			got, err := Eval(e, NewCtx())
+			got, err := Eval(e, EmptyCtx())
 			if err != nil {
 				t.Fatalf("Failed to evaluate: %s", err)
 			}
@@ -260,7 +260,7 @@ func TestEvalConditionalExpr(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Cannot parse expression: %s", err)
 			}
-			got, err := Eval(e, NewCtx())
+			got, err := Eval(e, EmptyCtx())
 			if err != nil {
 				t.Fatalf("Failed to evaluate: %s", err)
 			}

@@ -1,0 +1,3 @@
+{
+    concat: func (xss) { flatmap(func (xs) { xs }, xss) }
+}

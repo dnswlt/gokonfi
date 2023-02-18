@@ -17,6 +17,7 @@ var builtinFunctions = []*NativeFuncVal{
 	{Name: "format", Arity: -1, F: builtinFormat},
 	{Name: "isnil", Arity: 1, F: builtinIsnil},
 	{Name: "len", Arity: 1, F: builtinLen},
+	{Name: "load", Arity: 1, F: builtinLoad},
 	{Name: "str", Arity: 1, F: builtinStr},
 	{Name: "substr", Arity: 3, F: builtinSubstr},
 	{Name: "typeof", Arity: 1, F: builtinTypeof},
@@ -159,6 +160,21 @@ func builtinLen(args []Val, ctx *Ctx) (Val, error) {
 		return IntVal(len(arg.Elements)), nil
 	}
 	return nil, fmt.Errorf("len: invalid type: %T", args[0])
+}
+
+// builtinLoad loads a module (file) and stores it in the context.
+// It returns the module body as a Val.
+// load(name string) any
+func builtinLoad(args []Val, ctx *Ctx) (Val, error) {
+	name, ok := args[0].(StringVal)
+	if !ok {
+		return nil, fmt.Errorf("load: expected string argument got: %s", args[0])
+	}
+	lmod, err := LoadModule(string(name), ctx.dropLocals())
+	if err != nil {
+		return nil, err
+	}
+	return lmod.body, nil
 }
 
 // str(x any) string

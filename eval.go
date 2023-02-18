@@ -3,6 +3,7 @@ package gokonfi
 import (
 	"fmt"
 	"log"
+	"path"
 	"strconv"
 
 	"github.com/dnswlt/gokonfi/token"
@@ -36,29 +37,62 @@ type fullyEvaluated struct {
 func (l *lazyExpr) lazyImpl()       {}
 func (l *fullyEvaluated) lazyImpl() {}
 
-// Ctx is a chained evaluation context containing lazy evaluated values for
-// all variables that are in scope.
 type Ctx struct {
-	env    map[string]lazyVal // let vars and fields of the current record / module.
-	active map[string]bool    // To detect evaluation cycles
-	types  map[string]*Typ    // Known types
-	parent *Ctx               // Parent context (e.g. of the parent record).
+	vars   *varCtx
+	global *globalCtx
 }
 
-func NewCtx() *Ctx {
-	return ChildCtx(nil)
+// LocalCtx is a chained evaluation context containing lazy evaluated values for
+// all variables that are in scope.
+type varCtx struct {
+	env    map[string]lazyVal // let vars and fields of the current record / module.
+	active map[string]bool    // Variables currently under evaluation (to detect evaluation cycles).
+	parent *varCtx            // Parent context (e.g. of the parent record).
+}
+
+type globalCtx struct {
+	fileset   *token.FileSet           // The set of files loaded thus far or currently being loaded
+	types     map[string]*Typ          // Known types
+	modules   map[string]*loadedModule // Already loaded modules, keyed by File.Name().
+	filestack []string                 // Stack of current working directories.
+}
+
+type loadedModule struct {
+	file *token.File
+	body Val
+}
+
+func (m *loadedModule) Body() Val {
+	return m.body
+}
+
+func EmptyCtx() *Ctx {
+	return &Ctx{
+		vars: &varCtx{
+			env:    make(map[string]lazyVal),
+			active: make(map[string]bool),
+			parent: nil,
+		},
+		global: &globalCtx{
+			fileset: token.NewFileSet(),
+			types:   make(map[string]*Typ),
+			modules: make(map[string]*loadedModule),
+		},
+	}
 }
 
 func ChildCtx(parent *Ctx) *Ctx {
 	return &Ctx{
-		env:    make(map[string]lazyVal),
-		active: make(map[string]bool),
-		types:  make(map[string]*Typ),
-		parent: parent}
+		vars: &varCtx{
+			env:    make(map[string]lazyVal),
+			active: make(map[string]bool),
+			parent: parent.vars},
+		global: parent.global,
+	}
 }
 
 func GlobalCtx() *Ctx {
-	ctx := NewCtx()
+	ctx := EmptyCtx()
 	for _, builtin := range builtinFunctions {
 		ctx.store(builtin.Name, builtin)
 	}
@@ -74,11 +108,20 @@ func GlobalCtx() *Ctx {
 	return ctx
 }
 
+func (ctx *Ctx) dropLocals() *Ctx {
+	// The last varCtx in the chain contains the global variables.
+	l := ctx.vars
+	for l.parent != nil {
+		l = l.parent
+	}
+	return &Ctx{global: ctx.global, vars: l}
+}
+
 func (ctx *Ctx) Lookup(v string) (lazyVal, *Ctx) {
-	c := ctx
+	c := ctx.vars
 	for c != nil {
 		if val, ok := c.env[v]; ok {
-			return val, c
+			return val, &Ctx{c, ctx.global}
 		}
 		c = c.parent
 	}
@@ -86,28 +129,31 @@ func (ctx *Ctx) Lookup(v string) (lazyVal, *Ctx) {
 }
 
 func (ctx *Ctx) LookupType(typeId string) *Typ {
-	c := ctx
-	for c != nil {
-		if typ, ok := c.types[typeId]; ok {
-			return typ
-		}
-		c = c.parent
+	if typ, ok := ctx.global.types[typeId]; ok {
+		return typ
+	}
+	return nil // Not found
+}
+
+func (ctx *Ctx) LookupModule(name string) *loadedModule {
+	if mod, ok := ctx.global.modules[name]; ok {
+		return mod
 	}
 	return nil // Not found
 }
 
 func (ctx *Ctx) isActive(v string) bool {
-	return ctx.active[v]
+	return ctx.vars.active[v]
 }
 
 func (ctx *Ctx) setActive(v string) {
-	ctx.active[v] = true
+	ctx.vars.active[v] = true
 }
 
 // Checks whether this particular context (ignoring its parents) has
 // fully evaluated variable x. If it does, returns it, else nil.
 func (ctx *Ctx) fullyEvaluated(v string) (val *fullyEvaluated, found bool) {
-	if x, ok := ctx.env[v]; ok {
+	if x, ok := ctx.vars.env[v]; ok {
 		if val, ok := x.(*fullyEvaluated); ok {
 			return val, true
 		}
@@ -116,21 +162,56 @@ func (ctx *Ctx) fullyEvaluated(v string) (val *fullyEvaluated, found bool) {
 }
 
 func (ctx *Ctx) store(v string, val Val) {
-	ctx.env[v] = &fullyEvaluated{val}
+	ctx.vars.env[v] = &fullyEvaluated{val}
 	// Once a value was stored, it's no longer actively being computed.
-	delete(ctx.active, v)
+	delete(ctx.vars.active, v)
 }
 
 func (ctx *Ctx) storeExpr(v string, expr Expr) {
-	ctx.env[v] = &lazyExpr{expr: expr}
+	ctx.vars.env[v] = &lazyExpr{expr: expr}
+}
+
+func (ctx *Ctx) storeModule(m *loadedModule) {
+	ctx.global.modules[m.file.Name()] = m
 }
 
 func (ctx *Ctx) defineType(name string, typ *Typ) {
-	ctx.types[name] = typ
+	ctx.global.types[name] = typ
 }
 
 func (ctx *Ctx) defineUnit(name string, typ *Typ) {
-	ctx.types[name] = typ
+	ctx.global.types[name] = typ
+}
+
+func (ctx *Ctx) addFile(name string, size int) *token.File {
+	return ctx.global.fileset.AddFile(name, size)
+}
+
+func (ctx *Ctx) isActiveFile(name string) bool {
+	for _, f := range ctx.global.filestack {
+		if f == name {
+			return true
+		}
+	}
+	return false
+}
+
+func (ctx *Ctx) pushFile(filename string) {
+	ctx.global.filestack = append(ctx.global.filestack, filename)
+}
+
+func (ctx *Ctx) popFile() {
+	if len(ctx.global.filestack) == 0 {
+		return
+	}
+	ctx.global.filestack = ctx.global.filestack[:len(ctx.global.filestack)-1]
+}
+
+func (ctx *Ctx) cwd() string {
+	if len(ctx.global.filestack) == 0 {
+		return "."
+	}
+	return path.Dir(ctx.global.filestack[len(ctx.global.filestack)-1])
 }
 
 type EvalError struct {

@@ -1,0 +1,7 @@
+{
+    let util: load('lib/util')
+    x: util.max(1, 2)
+    test_x: x == 2
+    y: util.concat([[1, 2], [3, 4]])
+    test_y: len(y) == 4
+}
