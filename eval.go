@@ -214,9 +214,14 @@ func (ctx *Ctx) cwd() string {
 	return path.Dir(ctx.global.filestack[len(ctx.global.filestack)-1])
 }
 
+func (ctx *Ctx) fileset() *token.FileSet {
+	return ctx.global.fileset
+}
+
 type EvalError struct {
-	pos token.Pos
-	msg string
+	pos   token.Pos
+	msg   string
+	cause error
 }
 
 func (e *EvalError) Error() string {
@@ -225,6 +230,10 @@ func (e *EvalError) Error() string {
 
 func (e *EvalError) Pos() token.Pos {
 	return e.pos
+}
+
+func (e *EvalError) Unwrap() error {
+	return e.cause
 }
 
 type RecVal struct {
@@ -732,7 +741,7 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		}
 		r, err := unaryOp(x, e.Op)
 		if err != nil {
-			return nil, &EvalError{pos: e.Pos(), msg: err.Error()}
+			return nil, &EvalError{pos: e.OpPos, msg: err.Error()}
 		}
 		return r, nil
 	case *BinaryExpr:
@@ -746,7 +755,7 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		}
 		r, err := binaryOp(x, y, e.Op)
 		if err != nil {
-			return nil, &EvalError{pos: e.Pos(), msg: err.Error()}
+			return nil, &EvalError{pos: e.OpPos, msg: err.Error()}
 		}
 		return r, nil
 	case *VarExpr:

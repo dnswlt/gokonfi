@@ -24,9 +24,10 @@ func run() error {
 		return fmt.Errorf("expected one input file, got %d", len(flag.Args()))
 	}
 	filename := flag.Arg(0)
-	val, err := gokonfi.LoadModule(filename, gokonfi.GlobalCtx())
+	ctx := gokonfi.GlobalCtx()
+	val, err := gokonfi.LoadModule(filename, ctx)
 	if err != nil {
-		return fmt.Errorf("failed to process %s: %s", filename, err)
+		return ctx.FormattedError(err)
 	}
 	switch outputFormat {
 	case "json":

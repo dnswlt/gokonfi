@@ -141,7 +141,7 @@ func TestLoadModuleNotFound(t *testing.T) {
 }
 
 func TestLoadModuleCycle(t *testing.T) {
-	// Cycle detection for two modules trying to load each other.
+	// Cycle detection for three modules trying to load each other.
 	if testing.Short() {
 		// Don't run tests writing to disk in -short mode.
 		return

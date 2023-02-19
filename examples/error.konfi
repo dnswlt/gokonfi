@@ -1,0 +1,6 @@
+// Playground for konfi error messages
+
+{
+    x:  'b' + 'a'
+    y: "foo"
+}

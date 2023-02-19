@@ -12,6 +12,7 @@ import (
 var builtinFunctions = []*NativeFuncVal{
 	{Name: "cond", Arity: 3, F: builtinCond},
 	{Name: "contains", Arity: 2, F: builtinContains},
+	{Name: "error", Arity: 1, F: builtinError},
 	{Name: "flatmap", Arity: 2, F: builtinFlatmap},
 	{Name: "fold", Arity: -1, F: builtinFold},
 	{Name: "format", Arity: -1, F: builtinFormat},
@@ -41,6 +42,15 @@ func builtinContains(args []Val, ctx *Ctx) (Val, error) {
 		return nil, fmt.Errorf("contains: invalid type for second argument: %T", args[1])
 	}
 	return nil, fmt.Errorf("contains: invalid argument types: (%T, %T)", args[0], args[1])
+}
+
+// error(s string) error
+func builtinError(args []Val, ctx *Ctx) (Val, error) {
+	switch s := args[0].(type) {
+	case StringVal:
+		return nil, fmt.Errorf(string(s))
+	}
+	return nil, fmt.Errorf("error: invalid argument type: %T", args[0])
 }
 
 // flatmap(f func('a)[]'b, xs []'a) []'b

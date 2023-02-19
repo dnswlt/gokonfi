@@ -43,14 +43,14 @@ func LoadModule(name string, ctx *Ctx) (*loadedModule, error) {
 	file := ctx.addFile(filename, len(input))
 	mod, err := ParseModule(input, file)
 	if err != nil {
-		return nil, fmt.Errorf("LoadModule: failed to parse module: %w", err)
+		return nil, chainError(err, "LoadModule: failed to parse module")
 	}
 	// Evaluate module and store it in context.
 	ctx.pushFile(filename)
 	defer ctx.popFile()
 	val, err := Eval(mod.expr, ctx)
 	if err != nil {
-		return nil, fmt.Errorf("LoadModule: failed to evaluate module: %w", err)
+		return nil, chainError(err, "LoadModule: failed to evaluate module")
 	}
 	lmod := &loadedModule{file: file, body: val}
 	ctx.storeModule(lmod)

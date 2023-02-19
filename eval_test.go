@@ -483,6 +483,8 @@ func TestEvalErrors(t *testing.T) {
 		{input: "1 + 1.0", want: "incompatible types"},
 		{input: "(func (x) {x}) + 3", want: "incompatible types"},
 		{input: "-'a'", want: "incompatible type"},
+		// Using the error function also yields an error
+		{input: "{x: error('foobar')}", want: "foobar"},
 	}
 	for i, test := range tests {
 		t.Run(fmt.Sprintf("#%d", i), func(t *testing.T) {

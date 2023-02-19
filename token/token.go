@@ -1,5 +1,10 @@
 package token
 
+import (
+	"fmt"
+	"sort"
+)
+
 //go:generate stringer -type=TokenType
 type TokenType int32
 
@@ -127,4 +132,45 @@ func (fs *FileSet) AddFile(name string, size int) *File {
 	fs.files = append(fs.files, f)
 	fs.base += size
 	return f
+}
+
+type Position struct {
+	line, col int
+	file      string
+}
+
+func (p *Position) String() string {
+	return fmt.Sprintf("%s:%d:%d", p.file, p.line, p.col)
+}
+
+func (fs *FileSet) Position(pos Pos) (Position, bool) {
+	if len(fs.files) == 0 {
+		return Position{}, false
+	}
+	p := int(pos)
+	i := sort.Search(len(fs.files), func(i int) bool {
+		return fs.files[i].base > p
+	})
+	if i == 0 {
+		// No file has a base <= p.
+		return Position{}, false
+	}
+	i--
+	f := fs.files[i]
+	q := p - f.base
+	if q >= f.size {
+		// Offset within file too large. Can only happen at the end or if the difference
+		// of .base consecutive files is not equal to the size of the first file,
+		// which our API currently prevents, but better safe than sorry.
+		return Position{}, false
+	}
+	j := sort.Search(len(f.lines), func(i int) bool {
+		return f.lines[i] > q
+	})
+	if j == 0 {
+		// No line has an offset <= q.
+		return Position{}, false
+	}
+	// Lines and columns in Position are 1-based, not 0-based.
+	return Position{line: j, col: q - f.lines[j-1] + 1, file: f.name}, true
 }

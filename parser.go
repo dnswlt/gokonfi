@@ -302,6 +302,9 @@ func (p *Parser) AtEnd() bool {
 
 func ParseModule(input string, file *token.File) (*Module, error) {
 	ts, err := NewScanner(string(input), file).ScanAll()
+	if err != nil {
+		return nil, err
+	}
 	p := NewParser(ts)
 	// For now, a module is simply an expression.
 	e, err := p.Expression()
