@@ -14,7 +14,7 @@ var (
 )
 
 func init() {
-	flag.StringVar(&outputFormat, "format", "json", "output format")
+	flag.StringVar(&outputFormat, "format", "json", "output format (supported: yaml, json)")
 	flag.BoolVar(&printResult, "p", true, "print result to stdout")
 }
 
@@ -25,17 +25,23 @@ func run() error {
 	}
 	filename := flag.Arg(0)
 	ctx := gokonfi.GlobalCtx()
-	val, err := gokonfi.LoadModule(filename, ctx)
+	mod, err := gokonfi.LoadModule(filename, ctx)
 	if err != nil {
 		return ctx.FormattedError(err)
 	}
 	switch outputFormat {
 	case "json":
-		js, err := gokonfi.EncodeAsJsonIndent(val.Body())
+		js, err := gokonfi.EncodeAsJsonIndent(mod.Body())
 		if err != nil {
 			return err
 		}
 		fmt.Println(js)
+	case "yaml":
+		yml, err := gokonfi.EncodeAsYaml(mod.Body())
+		if err != nil {
+			return err
+		}
+		fmt.Print(yml) // yml always ends in a newline.
 	default:
 		return fmt.Errorf("unknown output format: %s", outputFormat)
 	}

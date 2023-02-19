@@ -4,7 +4,30 @@ import (
 	"bytes"
 	"encoding/json"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
+
+// YAML encoding.
+
+func EncodeAsYaml(v Val) (string, error) {
+	bs, err := yaml.Marshal(v)
+	return string(bs), err
+}
+
+func (r *RecVal) MarshalYAML() (interface{}, error) {
+	return r.Fields, nil
+}
+
+func (xs *ListVal) MarshalYAML() (interface{}, error) {
+	return xs.Elements, nil
+}
+
+func (x UnitVal) MarshalYAML() (interface{}, error) {
+	return x.V, nil
+}
+
+// JSON encoding.
 
 func (r *RecVal) MarshalJSON() ([]byte, error) {
 	// json.Marshal will always HTML-encode < > &, so we use this "workaround" :(

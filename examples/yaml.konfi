@@ -1,0 +1,15 @@
+{
+    timeout::millis: 1000::millis
+} @
+{
+    a: 1 + 2
+    b: "foo is not bar"
+    c: 3.14
+    // Heterogeneous list:
+    ds: [1, 2, 3, {u: 1 v: -2}]
+    nested: {
+        a: 10
+    }
+    truth: 1 < 2
+    timeout: 1::minutes + 5::seconds
+}

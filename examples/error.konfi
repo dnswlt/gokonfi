@@ -1,6 +1,6 @@
 // Playground for konfi error messages
 
 {
-    x:  'b' + 'a'
+    x:  1 + 'a'
     y: "foo"
 }
