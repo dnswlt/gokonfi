@@ -228,19 +228,13 @@ func typeCheck(val Val, t *Typ) error {
 	if t == val.Typ() {
 		return nil
 	}
-	return fmt.Errorf("incompatible types: %s :: %s", val.Typ().Id, t.Id)
+	return fmt.Errorf("incompatible types: %s <> %s", val.Typ().Id, t.Id)
 }
 
-func conformUnits(u UnitVal, t *Typ, target string) UnitVal {
-	if u.T != t {
-		log.Fatalf("Cannot conform units of different types: %s <> %s", u.T.Id, t.Id)
-	}
-	f, found := t.UnitFactor(target)
+func conformUnits(u UnitVal, multiplier string) UnitVal {
+	f, found := u.T.UnitFactor(multiplier)
 	if !found {
-		log.Fatalf("Invalid unit multiplier name: %s", target)
+		log.Fatalf("Invalid unit multiplier name: %s", multiplier)
 	}
-	if u.F == f {
-		return u
-	}
-	return UnitVal{V: u.V * (u.F / f), F: f, T: t}
+	return u.WithF(f)
 }

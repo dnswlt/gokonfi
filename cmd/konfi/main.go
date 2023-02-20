@@ -27,7 +27,7 @@ func run() error {
 	ctx := gokonfi.GlobalCtx()
 	mod, err := gokonfi.LoadModule(filename, ctx)
 	if err != nil {
-		return ctx.FormattedError(err)
+		return gokonfi.FormattedError(err, ctx.Fileset())
 	}
 	switch outputFormat {
 	case "json":

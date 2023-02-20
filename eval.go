@@ -214,7 +214,8 @@ func (ctx *Ctx) cwd() string {
 	return path.Dir(ctx.global.filestack[len(ctx.global.filestack)-1])
 }
 
-func (ctx *Ctx) fileset() *token.FileSet {
+// Exposed publicly because it is needed by [FormattedError].
+func (ctx *Ctx) Fileset() *token.FileSet {
 	return ctx.global.fileset
 }
 
@@ -268,8 +269,15 @@ type UnitVal struct {
 	T *Typ    // The unit's type.
 }
 
-func (v *UnitVal) TypeId() string {
-	return v.T.Id
+func (u UnitVal) TypeId() string {
+	return u.T.Id
+}
+
+func (u UnitVal) WithF(f float64) UnitVal {
+	if u.F == f {
+		return u
+	}
+	return UnitVal{V: u.V * (u.F / f), F: f, T: u.T}
 }
 
 type BoolVal bool
@@ -803,35 +811,35 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		}
 		rec := NewRec()
 		for _, f := range e.Fields {
-			var t *Typ = nil
+			var t *Typ
 			if f.T != nil {
 				t = rctx.LookupType(f.T.TypeId())
 				if t == nil {
 					return nil, &EvalError{pos: f.T.Pos(), msg: fmt.Sprintf("unknown type %s for field %s", f.T.TypeId(), f.Name)}
 				}
 			}
-			if v, found := rctx.fullyEvaluated(f.Name); found {
-				// Eval of some other field already required evaluation of this field.
-				if err := typeCheck(v.val, t); err != nil {
-					return nil, &EvalError{pos: f.T.Pos(), msg: fmt.Sprintf("type error for field %s: %s", f.Name, err)}
+			var v Val
+			cv, found := rctx.fullyEvaluated(f.Name)
+			if found {
+				// Eval of another expression already required evaluation of this field.
+				v = cv.val
+			} else {
+				var err error
+				rctx.setActive(f.Name)
+				v, err = Eval(f.X, rctx)
+				if err != nil {
+					return nil, err
 				}
-				rec.setField(f.Name, v.val, t)
-				continue
-			}
-			rctx.setActive(f.Name)
-			v, err := Eval(f.X, rctx)
-			if err != nil {
-				return nil, err
+				rctx.store(f.Name, v)
 			}
 			if t != nil {
 				if err := typeCheck(v, t); err != nil {
 					return nil, &EvalError{pos: f.T.Pos(), msg: fmt.Sprintf("type error for field %s: %s", f.Name, err)}
 				}
 				if u, ok := v.(UnitVal); ok {
-					v = conformUnits(u, t, f.T.TypeId())
+					v = conformUnits(u, f.T.TypeId())
 				}
 			}
-			rctx.store(f.Name, v)
 			rec.setField(f.Name, v, t)
 		}
 		return rec, nil
@@ -946,6 +954,15 @@ func mergeRecVal(x, y, r *RecVal) error {
 				if err := typeCheck(vy, tx); err != nil {
 					return err
 				}
+				if ux, ok := vx.(UnitVal); ok {
+					if uy, ok := vy.(UnitVal); ok {
+						vy = uy.WithF(ux.F)
+					} else {
+						// Implementation error if we end up here: if vy passes the type check for tx,
+						// it must be a UnitVal.
+						log.Fatalf("%v passes type check for type %s but is not a unit", vy, tx.Id)
+					}
+				}
 			}
 			targetType := tx
 			if yHasType {
@@ -958,18 +975,19 @@ func mergeRecVal(x, y, r *RecVal) error {
 			if _, ok := vy.(*TypedVal); ok {
 				return fmt.Errorf("merging TypedVal is not implemented")
 			}
-			if ry, ok := vy.(*RecVal); !ok {
-				// y field is not a record, just take the value from y.
-				r.setField(f, vy, targetType)
-			} else if rx, ok := vx.(*RecVal); ok {
-				// x's field is a record, too: recurse.
-				cr := NewRec()
-				r.setField(f, cr, targetType)
-				mergeRecVal(rx, ry, cr)
-			} else {
-				// x field is not a record, again just take the value from y.
-				r.setField(f, vy, targetType)
+			if ry, ok := vy.(*RecVal); ok {
+				if rx, ok := vx.(*RecVal); ok {
+					// x and y are records: recurse
+					cr := NewRec()
+					r.setField(f, cr, targetType)
+					if err := mergeRecVal(rx, ry, cr); err != nil {
+						return err
+					}
+					continue
+				}
 			}
+			// Just take the value from y.
+			r.setField(f, vy, targetType)
 		}
 	}
 	return nil

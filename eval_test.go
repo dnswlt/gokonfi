@@ -194,6 +194,13 @@ func TestEvalTypedRecField(t *testing.T) {
 		{name: "string", input: "{x::string: 'a'}.x", want: StringVal("a")},
 		{name: "bool", input: "{x::bool: 1 < 2}.x", want: BoolVal(true)},
 		{name: "merge", input: "({x::bool: true} @ {x: false}).x", want: BoolVal(false)},
+		// Merging with untyped rhs preserves the unit multiplier of the lhs.
+		{name: "merge-unit", input: "({x::millis: 1::millis} @ {x: 7::seconds}).x", want: u(7000, "millis")},
+		{
+			name:  "merge-unit-override",
+			input: "({x::millis: 1::millis} @ {x::seconds: 1::seconds}).x",
+			want:  u(1, "seconds"),
+		},
 		// You can merge records with fields of different types only if the rhs has an explicit type:
 		{name: "merge-cast", input: "({x::bool: true} @ {x::int: 1}).x", want: IntVal(1)},
 	}
@@ -224,6 +231,14 @@ func TestEvalTypedRecFieldError(t *testing.T) {
 	}{
 		{name: "int-duration", input: "{x::int: 1500::millis}", want: incompatible},
 		{name: "int-double", input: "{x::int: 1500::double}", want: incompatible},
+		// Cannot assign mere ints to units.
+		{name: "duration-int", input: "{x::seconds: 1}", want: incompatible},
+		// Not even doubles.
+		// TODO: This is actually a bit inconvenient. The assignment looks benign.
+		// OTOH, for complex expressions it's important to catch implicit conversions:
+		// {x::seconds: computeSthInMillisReturningInt()} should yield an error.
+		// We might special case on the syntax where the rhs is an int/double literal.
+		{name: "duration-double", input: "{x::seconds: 1.}", want: incompatible},
 		{name: "int-list", input: "{x::int: []}", want: incompatible},
 		{name: "bool-int", input: "{x::bool: 1}", want: incompatible},
 		// Cannot merge records with fields of different types if only lhs is typed:
