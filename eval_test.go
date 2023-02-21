@@ -512,7 +512,7 @@ func TestEvalErrors(t *testing.T) {
 				t.Errorf("Want error, got: %s", got)
 			} else if evalErr, ok := err.(*EvalError); !ok {
 				t.Errorf("Want EvalError, got %T", err)
-			} else if !strings.Contains(evalErr.msg, test.want) {
+			} else if !strings.Contains(evalErr.Error(), test.want) {
 				t.Errorf("Got '%s', wanted it to contain '%v'", err, test.want)
 			}
 		})

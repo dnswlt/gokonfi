@@ -141,6 +141,10 @@ type Position struct {
 	file      string
 }
 
+func (p *Position) Line() int    { return p.line }
+func (p *Position) Column() int  { return p.col }
+func (p *Position) File() string { return p.file }
+
 func (p *Position) String() string {
 	return fmt.Sprintf("%s:%d:%d", p.file, p.line, p.col)
 }

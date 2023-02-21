@@ -215,7 +215,7 @@ func (ctx *Ctx) cwd() string {
 }
 
 // Exposed publicly because it is needed by [FormattedError].
-func (ctx *Ctx) Fileset() *token.FileSet {
+func (ctx *Ctx) FileSet() *token.FileSet {
 	return ctx.global.fileset
 }
 
@@ -226,6 +226,9 @@ type EvalError struct {
 }
 
 func (e *EvalError) Error() string {
+	if e.cause != nil {
+		return fmt.Sprintf("EvalError: %s (caused by: %s) at position %d", e.msg, e.cause, e.pos)
+	}
 	return fmt.Sprintf("EvalError: %s at position %d", e.msg, e.pos)
 }
 

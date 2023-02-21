@@ -1,6 +1,7 @@
 package gokonfi
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -164,5 +165,46 @@ func TestLoadModuleCycle(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "cycle") {
 		t.Errorf("expected 'cycle' error, got: %s", err)
+	}
+}
+
+func TestLoadModuleSyntaxError(t *testing.T) {
+	// Loading a module that contains a syntax error should yield
+	// an error chain with a ParseError indicating the right position.
+	if testing.Short() {
+		// Don't run tests writing to disk in -short mode.
+		return
+	}
+	d := t.TempDir()
+	// Write modules to disk.
+	m1Path := path.Join(d, "m1.konfi")
+	m1Module := []byte("{m: load('m2')}")
+	os.WriteFile(m1Path, m1Module, 0644)
+	m2Path := path.Join(d, "m2.konfi")
+	m2Module := []byte(`{ m: load('m3') }`)
+	os.WriteFile(m2Path, m2Module, 0644)
+	m3Path := path.Join(d, "m3.konfi")
+	// "3" is a syntax error at 2:10.
+	m3Module := []byte(`{
+		m: 'a' 3
+	}`)
+	os.WriteFile(m3Path, m3Module, 0644)
+	// Loading the module should fail with a ParseError.
+	ctx := GlobalCtx()
+	m, err := LoadModule(m1Path, ctx)
+	if err == nil {
+		t.Fatalf("expected error, got: %v", m)
+	}
+	var perr *ParseError
+	if !errors.As(err, &perr) {
+		t.Fatalf("cannot cast error to &ParseError: %s", err)
+	}
+	p, ok := ctx.FileSet().Position(perr.Pos())
+	if !ok {
+		t.Fatalf("failed to convert position %d", perr.Pos())
+	}
+	wantLine, wantCol := 2, 10
+	if p.Line() != wantLine || p.Column() != wantCol {
+		t.Errorf("Wrong error position: want <filename>:%d:%d, got %s", wantLine, wantCol, p.String())
 	}
 }

@@ -37,7 +37,11 @@ type Scanner struct {
 
 // Creates a new scanner from the given input.
 func NewScanner(input string, file *token.File) *Scanner {
-	return &Scanner{input: input, file: file, off: file.Base()}
+	off := 0
+	if file != nil {
+		off = file.Base()
+	}
+	return &Scanner{input: input, file: file, off: off}
 }
 
 // AtEnd returns true if the scanner has processed its input entirely.
