@@ -889,11 +889,7 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		if err == nil {
 			return res, nil
 		}
-		// Propagate EvalErrors, wrap all others to retain the source location.
-		if _, ok := err.(*EvalError); ok {
-			return nil, err
-		}
-		return nil, &EvalError{pos: e.Func.Pos(), msg: err.Error()}
+		return nil, &EvalError{pos: e.Func.Pos(), msg: "call failed", cause: err}
 	case *FuncExpr:
 		return &FuncExprVal{F: e, ctx: ctx}, nil
 	case *ConditionalExpr:

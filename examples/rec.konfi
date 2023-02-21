@@ -14,9 +14,9 @@
     a: {
         x: 27729
     }
-    // n: "/path/to/${a.x}"
     n_0: format("/path/to/%d", a.x)
     n_1: "/path/to/" + str(a.x) + ""
+    n_2: "/path/to/${a.x}"
 
     rec_str: str({})
 }

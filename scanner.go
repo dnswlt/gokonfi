@@ -37,7 +37,7 @@ type Scanner struct {
 
 // Creates a new scanner from the given input.
 func NewScanner(input string, file *token.File) *Scanner {
-	return &Scanner{input: input, file: file}
+	return &Scanner{input: input, file: file, off: file.Base()}
 }
 
 // AtEnd returns true if the scanner has processed its input entirely.
@@ -103,7 +103,7 @@ func (s *Scanner) childScanner(start, end int) *Scanner {
 		end = len(s.input)
 	}
 	// Child scanners should not update .file.
-	return &Scanner{input: s.input[start:end], off: start, file: nil}
+	return &Scanner{input: s.input[start:end], off: s.off + start, file: nil}
 }
 
 func (s *Scanner) tpos() token.Pos {

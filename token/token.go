@@ -114,6 +114,8 @@ type File struct {
 
 func (f *File) Name() string { return f.name }
 
+func (f *File) Base() int { return f.base }
+
 func (f *File) AddLine(offset int) {
 	f.lines = append(f.lines, offset)
 }

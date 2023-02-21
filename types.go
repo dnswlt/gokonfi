@@ -71,9 +71,9 @@ var (
 				}
 				uval, ok := args[0].(*UnitVal)
 				if !ok {
-					return nil, fmt.Errorf("duration.Unwrap: want TypedVal argument, got %T", args[0])
+					return nil, fmt.Errorf("duration.Unwrap: want UnitVal argument, got %T", args[0])
 				}
-				if uval.T.Id != "duration" {
+				if uval.TypeId() != "duration" {
 					return nil, fmt.Errorf("duration.Unwrap: called on invalid type: %s", uval.TypeId())
 				}
 				return DoubleVal(uval.V), nil
@@ -96,6 +96,11 @@ var (
 		builtinTypeInt,
 		builtinTypeDouble,
 		builtinTypeString,
+		builtinTypeNil,
+		builtinTypeRec,
+		builtinTypeList,
+		builtinTypeNativeFunc,
+		builtinTypeFuncExpr,
 		builtinTypeDuration,
 	}
 )
