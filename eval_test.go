@@ -176,8 +176,8 @@ func TestEvalRecExpr(t *testing.T) {
 
 func TestEvalTypedRecField(t *testing.T) {
 	u := func(x float64, name string) UnitVal {
-		if f, found := builtinTypeDuration.UnitFactor(name); found {
-			return UnitVal{V: x, F: f, T: builtinTypeDuration}
+		if f, found := builtinTypeDuration.UnitMultiplier(name); found {
+			return UnitVal{V: x, F: f.Factor, T: builtinTypeDuration}
 		}
 		t.Fatalf("invalid unit multiple name: %s", name)
 		return UnitVal{}
@@ -203,6 +203,9 @@ func TestEvalTypedRecField(t *testing.T) {
 		},
 		// You can merge records with fields of different types only if the rhs has an explicit type:
 		{name: "merge-cast", input: "({x::bool: true} @ {x::int: 1}).x", want: IntVal(1)},
+		// The field can be the unit type, not a specific multiplier. No conversions happen.
+		{name: "unittype", input: "{x::duration: 2::minutes}.x", want: u(2, "minutes")},
+		{name: "merge-unittype", input: "({x::duration: 2::minutes} @ {x: 3::hours}).x", want: u(3, "hours")},
 	}
 	for i, test := range tests {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
@@ -569,8 +572,8 @@ func TestEvalTypedExpr(t *testing.T) {
 
 func TestDurationUnit(t *testing.T) {
 	u := func(x float64, name string) UnitVal {
-		if f, found := builtinTypeDuration.UnitFactor(name); found {
-			return UnitVal{V: x, F: f, T: builtinTypeDuration}
+		if f, found := builtinTypeDuration.UnitMultiplier(name); found {
+			return UnitVal{V: x, F: f.Factor, T: builtinTypeDuration}
 		}
 		t.Fatalf("invalid unit multiple name: %s", name)
 		return UnitVal{}

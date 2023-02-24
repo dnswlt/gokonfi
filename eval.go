@@ -97,13 +97,7 @@ func GlobalCtx() *Ctx {
 		ctx.store(builtin.Name, builtin)
 	}
 	for _, typ := range builtinTypes {
-		if typ.IsUnit() {
-			for _, unit := range typ.Units {
-				ctx.defineUnit(unit.Name, typ)
-			}
-		} else {
-			ctx.defineType(typ.Id, typ)
-		}
+		ctx.defineType(typ.Id, typ)
 	}
 	return ctx
 }
@@ -177,6 +171,9 @@ func (ctx *Ctx) storeModule(m *loadedModule) {
 
 func (ctx *Ctx) defineType(name string, typ *Typ) {
 	ctx.global.types[name] = typ
+	for _, m := range typ.UnitMults {
+		ctx.global.types[m.Name] = typ
+	}
 }
 
 func (ctx *Ctx) defineUnit(name string, typ *Typ) {
@@ -241,18 +238,23 @@ func (e *EvalError) Unwrap() error {
 }
 
 type RecVal struct {
-	Fields     map[string]Val
-	FieldTypes map[string]*Typ // Optional type annotations per field.
+	Fields           map[string]Val
+	FieldAnnotations map[string]*FieldAnnotation // Optional type annotations per field.
+}
+
+type FieldAnnotation struct {
+	T *Typ
+	M *UnitMult // optional, only set if T.IsUnit() is true.
 }
 
 func NewRec() *RecVal {
-	return &RecVal{Fields: make(map[string]Val), FieldTypes: make(map[string]*Typ)}
+	return &RecVal{Fields: make(map[string]Val), FieldAnnotations: make(map[string]*FieldAnnotation)}
 }
 
-func (r *RecVal) setField(field string, val Val, typ *Typ) {
+func (r *RecVal) setField(field string, val Val, anno *FieldAnnotation) {
 	r.Fields[field] = val
-	if typ != nil {
-		r.FieldTypes[field] = typ
+	if anno != nil {
+		r.FieldAnnotations[field] = anno
 	}
 }
 
@@ -382,7 +384,7 @@ func (v DoubleVal) String() string {
 	return strconv.FormatFloat(float64(v), 'f', -1, 64)
 }
 func (v UnitVal) String() string {
-	if n, ok := v.T.UnitName(v.F); ok {
+	if n, ok := v.T.UnitMultiplierName(v.F); ok {
 		f := strconv.FormatFloat(v.V, 'f', -1, 64)
 		return f + "::" + n
 	}
@@ -815,10 +817,16 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		rec := NewRec()
 		for _, f := range e.Fields {
 			var t *Typ
+			var m *UnitMult
 			if f.T != nil {
 				t = rctx.LookupType(f.T.TypeId())
 				if t == nil {
 					return nil, &EvalError{pos: f.T.Pos(), msg: fmt.Sprintf("unknown type %s for field %s", f.T.TypeId(), f.Name)}
+				}
+				if t.IsUnit() {
+					// f.T may be the unit type itself (allowing any multiplier),
+					// so UnitMultiplier may return nil here.
+					m, _ = t.UnitMultiplier(f.T.TypeId())
 				}
 			}
 			var v Val
@@ -836,14 +844,18 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 				rctx.store(f.Name, v)
 			}
 			if t != nil {
+				// Typed field
 				if err := typeCheck(v, t); err != nil {
 					return nil, &EvalError{pos: f.T.Pos(), msg: fmt.Sprintf("type error for field %s: %s", f.Name, err)}
 				}
-				if u, ok := v.(UnitVal); ok {
-					v = conformUnits(u, f.T.TypeId())
+				if u, ok := v.(UnitVal); ok && m != nil {
+					v = u.WithF(m.Factor)
 				}
+				rec.setField(f.Name, v, &FieldAnnotation{T: t, M: m})
+			} else {
+				// t == nil => Untyped field
+				rec.setField(f.Name, v, nil)
 			}
-			rec.setField(f.Name, v, t)
 		}
 		return rec, nil
 	case *ListExpr:
@@ -935,37 +947,39 @@ func mergeRecVal(x, y, r *RecVal) error {
 	// Copy fields only in x.
 	for f, vx := range x.Fields {
 		if _, ok := y.Fields[f]; !ok {
-			r.setField(f, vx, x.FieldTypes[f])
+			r.setField(f, vx, x.FieldAnnotations[f])
 		}
 	}
 	// Copy fields only in y and merge common fields.
 	for f, vy := range y.Fields {
 		if vx, ok := x.Fields[f]; !ok {
 			// Unique field of y.
-			r.setField(f, vy, y.FieldTypes[f])
+			r.setField(f, vy, y.FieldAnnotations[f])
 		} else {
 			// Common field.
 			// If only x has a type annotation, only allow merging if y's value has the same type
 			// OR y has an explicit type annotation (i.e. interpret y's annotation as an explicit override).
-			tx, xHasType := x.FieldTypes[f]
-			ty, yHasType := y.FieldTypes[f]
+			ax, xHasType := x.FieldAnnotations[f]
+			ay, yHasType := y.FieldAnnotations[f]
 			if xHasType && !yHasType {
-				if err := typeCheck(vy, tx); err != nil {
+				if err := typeCheck(vy, ax.T); err != nil {
 					return err
 				}
-				if ux, ok := vx.(UnitVal); ok {
+				if ax.T.IsUnit() {
 					if uy, ok := vy.(UnitVal); ok {
-						vy = uy.WithF(ux.F)
+						if ax.M != nil {
+							vy = uy.WithF(ax.M.Factor)
+						}
 					} else {
 						// Implementation error if we end up here: if vy passes the type check for tx,
 						// it must be a UnitVal.
-						log.Fatalf("%v passes type check for type %s but is not a unit", vy, tx.Id)
+						log.Fatalf("%v passes type check for type %s but is not a unit", vy, ax.T.Id)
 					}
 				}
 			}
-			targetType := tx
+			targetType := ax
 			if yHasType {
-				targetType = ty
+				targetType = ay
 			}
 			// TODO: TypedVal is not properly supported here: we wouldn't recurse into a typed rec.
 			if _, ok := vx.(*TypedVal); ok {

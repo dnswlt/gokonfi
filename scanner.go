@@ -11,16 +11,18 @@ import (
 )
 
 var (
+	// Konfi keywords. Keep sorted.
 	keywords = map[string]token.TokenType{
-		"func":     token.Func,
-		"let":      token.Let,
-		"template": token.Template,
-		"if":       token.If,
-		"then":     token.Then,
 		"else":     token.Else,
-		"true":     token.BoolLiteral,
 		"false":    token.BoolLiteral,
+		"func":     token.Func,
+		"if":       token.If,
+		"let":      token.Let,
 		"nil":      token.Nil,
+		"pub":      token.Public,
+		"template": token.Template,
+		"then":     token.Then,
+		"true":     token.BoolLiteral,
 	}
 	// Used to extract integer and double literals.
 	numberRegexp = regexp.MustCompile(`^(?:\d+[eE][+-]?\d+|\d*\.\d+(?:[eE][+-]?\d+)?|\d+\.\d*(?:[eE][+-]?\d+)?|(\d+))`)

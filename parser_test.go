@@ -1,6 +1,7 @@
 package gokonfi
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"sort"
@@ -106,6 +107,22 @@ func parse(input string) (Expr, error) {
 	}
 	p := NewParser(ts)
 	res, err := p.Expression()
+	if err != nil {
+		return nil, err
+	}
+	if !p.AtEnd() {
+		return nil, fmt.Errorf("did not parse entire input")
+	}
+	return res, nil
+}
+
+func parseModule(input string) (*Module, error) {
+	ts, err := scanTokens(input)
+	if err != nil {
+		return nil, err
+	}
+	p := NewParser(ts)
+	res, err := p.Module()
 	if err != nil {
 		return nil, err
 	}
@@ -441,4 +458,114 @@ func TestParseTypedExpr(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParseModule(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantDecls int
+		wantLets  int
+		wantBody  bool
+	}{
+		{
+			name:      "onlydecls",
+			input:     `pub template foo() { x: 1 }`,
+			wantDecls: 1,
+		},
+		{
+			name: "mixed-decls",
+			input: `
+				pub template foo() { x: 1 }
+				let x: 7
+				pub template bar() { }`,
+			wantDecls: 2,
+			wantLets:  1,
+		},
+		{
+			name: "decl-with-body",
+			input: `
+				pub template foo() { x: 1 }
+				let x: 7
+				{x: 1}`,
+			wantDecls: 1,
+			wantLets:  1,
+			wantBody:  true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			m, err := parseModule(test.input)
+			if err != nil {
+				t.Fatalf("failed to parse: %s", err)
+			}
+			if len(m.FuncDecls) != test.wantDecls {
+				t.Errorf("want %d decls, got %d", test.wantDecls, len(m.FuncDecls))
+			}
+			if len(m.LetVars) != test.wantLets {
+				t.Errorf("want %d decls, got %d", test.wantLets, len(m.LetVars))
+			}
+			gotBody := m.Body != nil
+			if gotBody != test.wantBody {
+				t.Errorf("want body: %t, got body: %t", test.wantBody, gotBody)
+			}
+		})
+	}
+
+}
+
+func TestParseModuleError(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr string
+	}{
+		{
+			name: "missing-pub",
+			input: `
+			template foo() { }
+			pub template bar() { x: 1 }
+			`,
+			// Funnily enough, "template foo() {}" is a valid module: one with only a body.
+			// So the error we expect here is a complaint about remaining input (starting at "pub").
+			wantErr: "remaining",
+		},
+		{
+			name:    "missing-name",
+			input:   `pub template () { x: 1 }`,
+			wantErr: "name",
+		},
+		{
+			name: "duplicate-name",
+			input: `
+				pub template foo() { x: 1 }
+				let foo: 7
+			`,
+			wantErr: "duplicate",
+		},
+		{
+			name: "let-after-body",
+			input: `
+				{x: 1}
+				let foo: 7
+			`,
+			wantErr: "remaining",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := parseModule(test.input)
+			if err == nil {
+				t.Fatalf("wanted parse error, got value")
+			}
+			e := &ParseError{}
+			if ok := errors.As(err, &e); !ok {
+				t.Fatalf("Wanted &ParseError, got %T(%s)", err, err.Error())
+			}
+			if !strings.Contains(e.msg, test.wantErr) {
+				t.Errorf("wanted error containing %q, got %q", test.wantErr, e.msg)
+			}
+		})
+	}
+
 }

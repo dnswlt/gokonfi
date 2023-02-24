@@ -1,0 +1,12 @@
+// Loading and using templates from other files.
+
+// This is how it should work:
+
+// let m: load('lib/mult_templ')
+// m.job_tmpl(3)
+
+// This is how it works now. Looks pretty awkward.
+{
+    let m: load('lib/mult_templ')
+    r: m.job_tmpl({f: 3})
+}.r

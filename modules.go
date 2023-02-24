@@ -48,7 +48,7 @@ func LoadModule(name string, ctx *Ctx) (*loadedModule, error) {
 	// Evaluate module and store it in context.
 	ctx.pushFile(filename)
 	defer ctx.popFile()
-	val, err := Eval(mod.expr, ctx)
+	val, err := Eval(mod.Body, ctx)
 	if err != nil {
 		return nil, chainError(err, "LoadModule: failed to evaluate module")
 	}

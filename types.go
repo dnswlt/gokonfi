@@ -2,7 +2,6 @@ package gokonfi
 
 import (
 	"fmt"
-	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -10,34 +9,34 @@ import (
 	"github.com/dnswlt/gokonfi/token"
 )
 
-type UnitType struct {
+type UnitMult struct {
 	Name   string
 	Factor float64
 }
 
 type Typ struct {
-	Id       string
-	Convert  CallableVal // (any) -> Self
-	Unwrap   CallableVal // (Self) -> Val
-	Validate CallableVal // (Self) -> bool
-	Units    []UnitType  // Non-nil for unit types. Sorted by Name.
+	Id        string
+	Convert   CallableVal // (any) -> Self
+	Unwrap    CallableVal // (Self) -> Val
+	Validate  CallableVal // (Self) -> bool
+	UnitMults []UnitMult  // Non-nil for unit types. Sorted by Name.
 }
 
 func (t *Typ) IsUnit() bool {
-	return len(t.Units) > 0
+	return len(t.UnitMults) > 0
 }
 
-func (t *Typ) UnitFactor(unit string) (v float64, found bool) {
-	if i, found := sort.Find(len(t.Units), func(i int) int {
-		return strings.Compare(unit, t.Units[i].Name)
+func (t *Typ) UnitMultiplier(name string) (u *UnitMult, found bool) {
+	if i, found := sort.Find(len(t.UnitMults), func(i int) int {
+		return strings.Compare(name, t.UnitMults[i].Name)
 	}); found {
-		return t.Units[i].Factor, true
+		return &t.UnitMults[i], true
 	}
-	return 1., false
+	return nil, false
 }
 
-func (t *Typ) UnitName(factor float64) (name string, found bool) {
-	for _, u := range t.Units {
+func (t *Typ) UnitMultiplierName(factor float64) (name string, found bool) {
+	for _, u := range t.UnitMults {
 		if u.Factor == factor {
 			return u.Name, true
 		}
@@ -69,7 +68,7 @@ var (
 				if len(args) != 1 {
 					return nil, fmt.Errorf("duration.Unwrap: want 1 argument, got %d", len(args))
 				}
-				uval, ok := args[0].(*UnitVal)
+				uval, ok := args[0].(UnitVal)
 				if !ok {
 					return nil, fmt.Errorf("duration.Unwrap: want UnitVal argument, got %T", args[0])
 				}
@@ -80,7 +79,7 @@ var (
 			},
 			Arity: 1,
 		},
-		Units: []UnitType{
+		UnitMults: []UnitMult{
 			{"nanos", 1},
 			{"micros", 1000},
 			{"millis", 1000 * 1000},
@@ -111,12 +110,12 @@ func init() {
 		return builtinUnitTypeConvert(builtinTypeDuration, args, ctx)
 	}
 	// TODO: this sorting requirement is a bit silly.
-	sort.Slice(builtinTypeDuration.Units, func(i, j int) bool {
-		return builtinTypeDuration.Units[i].Name < builtinTypeDuration.Units[j].Name
+	sort.Slice(builtinTypeDuration.UnitMults, func(i, j int) bool {
+		return builtinTypeDuration.UnitMults[i].Name < builtinTypeDuration.UnitMults[j].Name
 	})
 }
 
-func builtinUnitTypeConvert(typ *Typ, args []Val, ctx *Ctx) (Val, error) {
+func builtinUnitTypeConvert(typ *Typ, args []Val, _ *Ctx) (Val, error) {
 	if len(args) != 2 {
 		return nil, fmt.Errorf("%s.Convert: want 2 arguments, got %d", typ.Id, len(args))
 	}
@@ -124,10 +123,11 @@ func builtinUnitTypeConvert(typ *Typ, args []Val, ctx *Ctx) (Val, error) {
 	if !ok {
 		return nil, fmt.Errorf("%s.Convert: want 1st argument as StringVal, got %T", typ.Id, args[0])
 	}
-	f, ok := typ.UnitFactor(string(unit))
+	m, ok := typ.UnitMultiplier(string(unit))
 	if !ok {
 		return nil, fmt.Errorf("%s.Convert: invalid unit %s", typ.Id, unit)
 	}
+	f := m.Factor
 	switch v := args[1].(type) {
 	case DoubleVal:
 		return UnitVal{V: float64(v), F: f, T: typ}, nil
@@ -234,12 +234,4 @@ func typeCheck(val Val, t *Typ) error {
 		return nil
 	}
 	return fmt.Errorf("incompatible types: %s <> %s", val.Typ().Id, t.Id)
-}
-
-func conformUnits(u UnitVal, multiplier string) UnitVal {
-	f, found := u.T.UnitFactor(multiplier)
-	if !found {
-		log.Fatalf("Invalid unit multiplier name: %s", multiplier)
-	}
-	return u.WithF(f)
 }

@@ -3,6 +3,7 @@ package gokonfi
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -25,6 +26,14 @@ func (xs *ListVal) MarshalYAML() (interface{}, error) {
 
 func (x UnitVal) MarshalYAML() (interface{}, error) {
 	return x.V, nil
+}
+
+func (f *FuncExprVal) MarshalYAML() (interface{}, error) {
+	return nil, fmt.Errorf("Cannot encode function expressions in YAML")
+}
+
+func (f *NativeFuncVal) MarshalYAML() (interface{}, error) {
+	return nil, fmt.Errorf("Cannot encode native functions in YAML")
 }
 
 // JSON encoding.

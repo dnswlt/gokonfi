@@ -59,6 +59,7 @@ const (
 	If       // if
 	Then     // then
 	Else     // else
+	Public   // pub
 	// Don't treat end of input as an error, but use a special token.
 	EndOfInput
 )

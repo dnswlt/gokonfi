@@ -33,9 +33,25 @@ func (e *ParseError) Pos() token.Pos {
 	return e.tok.Pos
 }
 
+// Modules and module-level declarations.
+
 type Module struct {
-	expr Expr
+	FuncDecls map[string]FuncDecl // Exported functions and templates (which are just functions).
+	LetVars   map[string]LetVar   // Local declarations.
+	Body      Expr
 }
+
+type FuncDecl struct {
+	Name    string
+	Func    *FuncExpr
+	DeclPos token.Pos // Start of the declaration.
+}
+
+func NewModule() *Module {
+	return &Module{FuncDecls: make(map[string]FuncDecl), LetVars: make(map[string]LetVar)}
+}
+
+// Expression nodes.
 
 type Node interface {
 	token.Poser
@@ -67,8 +83,9 @@ type ConditionalExpr struct {
 	Y    Expr
 }
 
-// func (x, y) { x + y - 1 }
+// func name(x, y) { x + y - 1 }  (name is optional)
 type FuncExpr struct {
+	Name    string // optional, "" if not defined.
 	Params  []AnnotatedIdent
 	FuncPos token.Pos
 	FuncEnd token.Pos
@@ -224,6 +241,10 @@ func (e *FuncExpr) Pos() token.Pos { return e.FuncPos }
 func (e *FuncExpr) End() token.Pos { return e.FuncEnd }
 func (e *FuncExpr) exprNode()      {}
 
+// Module-level declarations.
+func (d *FuncDecl) Pos() token.Pos { return d.DeclPos }
+func (d *FuncDecl) End() token.Pos { return d.Func.End() }
+
 // Type annotations.
 
 type TypeAnnotation interface {
@@ -301,17 +322,86 @@ func (p *Parser) AtEnd() bool {
 }
 
 func ParseModule(input string, file *token.File) (*Module, error) {
-	ts, err := NewScanner(string(input), file).ScanAll()
+	ts, err := NewScanner(input, file).ScanAll()
 	if err != nil {
 		return nil, err
 	}
 	p := NewParser(ts)
-	// For now, a module is simply an expression.
-	e, err := p.Expression()
-	if err != nil {
-		return nil, err
+	return p.Module()
+}
+
+func (p *Parser) Module() (*Module, error) {
+	m := NewModule()
+	// Parse declarations.
+	seen := make(map[string]bool)
+Loop:
+	for !p.AtEnd() {
+		t := p.peek()
+		switch t.Typ {
+		case token.Public:
+			fd, err := p.funcDecl()
+			if err != nil {
+				return nil, err
+			}
+			if seen[fd.Name] {
+				return nil, p.failat(t, "duplicate template declaration %q", fd.Name)
+			}
+			seen[fd.Name] = true
+			m.FuncDecls[fd.Name] = fd
+		case token.Let:
+			l, err := p.letVar()
+			if err != nil {
+				return nil, err
+			}
+			if seen[l.Name] {
+				return nil, p.failat(t, "duplicate declaration of variable %q", l.Name)
+			}
+			seen[l.Name] = true
+			m.LetVars[l.Name] = *l
+		default:
+			break Loop
+		}
 	}
-	return &Module{expr: e}, nil
+	if !p.AtEnd() {
+		// Parse body. It's OK not to have one.
+		e, err := p.Expression()
+		if err != nil {
+			return nil, err
+		}
+		m.Body = e
+	}
+	if !p.AtEnd() {
+		return nil, p.failat(p.peek(), "remaining input after parsing module")
+	}
+	return m, nil
+}
+
+func (p *Parser) funcDecl() (FuncDecl, error) {
+	pub := p.peek()
+	if err := p.expect(token.Public, "pub func or template declaration"); err != nil {
+		return FuncDecl{}, nil
+	}
+	switch p.peek().Typ {
+	case token.Template:
+		tmpl, err := p.template()
+		if err != nil {
+			return FuncDecl{}, err
+		}
+		if tmpl.Name == "" {
+			return FuncDecl{}, p.failat(pub, "module-level template declaration must have a name")
+		}
+		return FuncDecl{Name: tmpl.Name, DeclPos: pub.Pos, Func: tmpl}, nil
+	case token.Func:
+		fd, err := p.funk()
+		if err != nil {
+			return FuncDecl{}, err
+		}
+		if fd.Name == "" {
+			return FuncDecl{}, p.failat(pub, "module-level func declaration must have a name")
+		}
+		return FuncDecl{Name: fd.Name, DeclPos: pub.Pos, Func: fd}, nil
+	}
+	return FuncDecl{}, p.failat(pub, "expected func or template")
 }
 
 // Parses an expression.
@@ -631,43 +721,67 @@ func (p *Parser) operand() (Expr, error) {
 			return nil, err
 		}
 		return &ListExpr{Elements: xs, ListPos: start.Pos, ListEnd: p.previous().End}, nil
-	case p.match(token.Func):
-		funcPos := p.previous().Pos
-		if err := p.expect(token.LeftParen, "func"); err != nil {
-			return nil, err
-		}
-		params, err := p.identList(token.Comma, token.RightParen)
-		if err != nil {
-			return nil, err
-		}
-		if err = p.expect(token.LeftBrace, "func"); err != nil {
-			return nil, err
-		}
-		body, err := p.Expression()
-		if err != nil {
-			return nil, err
-		}
-		if err = p.expect(token.RightBrace, "func"); err != nil {
-			return nil, err
-		}
-		return &FuncExpr{Params: params, FuncPos: funcPos, FuncEnd: p.previous().End, Body: body}, nil
-	case p.match(token.Template):
-		// Templates are syntactic sugar for functions.
-		funcPos := p.previous().Pos
-		if err := p.expect(token.LeftParen, "template"); err != nil {
-			return nil, err
-		}
-		params, err := p.identList(token.Comma, token.RightParen)
-		if err != nil {
-			return nil, err
-		}
-		body, err := p.record()
-		if err != nil {
-			return nil, err
-		}
-		return &FuncExpr{Params: params, FuncPos: funcPos, FuncEnd: p.previous().End, Body: body}, nil
+	case p.peek().Typ == token.Func:
+		return p.funk()
+	case p.peek().Typ == token.Template:
+		// Templates are syntactic sugar for functions returning records.
+		return p.template()
 	}
-	return nil, p.fail("unexpected token type %s for primary expression", p.peek().Typ)
+	return nil, p.fail("unexpected token type %s for operand", p.peek().Typ)
+}
+
+func (p *Parser) funk() (*FuncExpr, error) {
+	if err := p.expect(token.Func, "func"); err != nil {
+		return nil, err
+	}
+	funcPos := p.previous().Pos
+	name := ""
+	if p.peek().Typ == token.Ident {
+		n := p.advance()
+		name = n.Val
+	}
+	if err := p.expect(token.LeftParen, "func"); err != nil {
+		return nil, err
+	}
+	params, err := p.identList(token.Comma, token.RightParen)
+	if err != nil {
+		return nil, err
+	}
+	if err = p.expect(token.LeftBrace, "func"); err != nil {
+		return nil, err
+	}
+	body, err := p.Expression()
+	if err != nil {
+		return nil, err
+	}
+	if err = p.expect(token.RightBrace, "func"); err != nil {
+		return nil, err
+	}
+	return &FuncExpr{Name: name, Params: params, FuncPos: funcPos, FuncEnd: p.previous().End, Body: body}, nil
+}
+
+func (p *Parser) template() (*FuncExpr, error) {
+	if err := p.expect(token.Template, "template"); err != nil {
+		return nil, err
+	}
+	startPos := p.previous().Pos
+	name := ""
+	if p.peek().Typ == token.Ident {
+		n := p.advance()
+		name = n.Val
+	}
+	if err := p.expect(token.LeftParen, "template"); err != nil {
+		return nil, err
+	}
+	params, err := p.identList(token.Comma, token.RightParen)
+	if err != nil {
+		return nil, err
+	}
+	body, err := p.record()
+	if err != nil {
+		return nil, err
+	}
+	return &FuncExpr{Name: name, Params: params, FuncPos: startPos, FuncEnd: p.previous().End, Body: body}, nil
 }
 
 func (p *Parser) record() (Expr, error) {
