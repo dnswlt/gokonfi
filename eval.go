@@ -58,12 +58,27 @@ type globalCtx struct {
 }
 
 type loadedModule struct {
-	file *token.File
-	body Val
+	name    string         // Name of this module. In practice, always its file path.
+	pubVars map[string]Val // Declared pub(lic) variables of the module.
+	body    Val            // The final (optional) module body. This is nil if not present.
 }
 
 func (m *loadedModule) Body() Val {
 	return m.body
+}
+
+func (m *loadedModule) AsRec() *RecVal {
+	r := NewRec()
+	for v, val := range m.pubVars {
+		r.setField(v, val, nil) // Module-level vars have no FieldAnnotation.
+	}
+	const bodyField = "body"
+	if _, ok := r.Fields[bodyField]; !ok {
+		// A module-level declaration can hide the body and make it inaccessible.
+		// This is not terribly beautiful, but works well enough in practice.
+		r.setField(bodyField, m.body, nil)
+	}
+	return r
 }
 
 func EmptyCtx() *Ctx {
@@ -166,7 +181,7 @@ func (ctx *Ctx) storeExpr(v string, expr Expr) {
 }
 
 func (ctx *Ctx) storeModule(m *loadedModule) {
-	ctx.global.modules[m.file.Name()] = m
+	ctx.global.modules[m.name] = m
 }
 
 func (ctx *Ctx) defineType(name string, typ *Typ) {
@@ -927,6 +942,50 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 	return nil, &EvalError{pos: expr.Pos(), msg: fmt.Sprintf("not implemented: %T", expr)}
 }
 
+// Evaluates the given module m and updates the context ctx with m's declarations.
+func EvalModule(m *Module, ctx *Ctx) (*loadedModule, error) {
+	// Evaluate module-level declarations. This is mostly analogous to how records are evaluated.
+	mctx := ChildCtx(ctx)
+	for _, d := range m.LetVars {
+		mctx.storeExpr(d.Name, d.X)
+	}
+	for _, d := range m.PubDecl {
+		mctx.storeExpr(d.Name, d.X)
+	}
+	for _, d := range m.LetVars {
+		if _, found := mctx.fullyEvaluated(d.Name); found {
+			continue
+		}
+		mctx.setActive(d.Name)
+		v, err := Eval(d.X, mctx)
+		if err != nil {
+			return nil, err
+		}
+		mctx.store(d.Name, v)
+	}
+	pubVars := make(map[string]Val)
+	for _, d := range m.PubDecl {
+		if v, found := mctx.fullyEvaluated(d.Name); found {
+			pubVars[d.Name] = v.val
+			continue
+		}
+		mctx.setActive(d.Name)
+		v, err := Eval(d.X, mctx)
+		if err != nil {
+			return nil, err
+		}
+		mctx.store(d.Name, v)
+		pubVars[d.Name] = v
+	}
+	// Evaluate body in a context that is aware of all declarations.
+	body, err := Eval(m.Body, mctx)
+	if err != nil {
+		return nil, err
+	}
+	lmod := &loadedModule{name: m.Name, pubVars: pubVars, body: body}
+	return lmod, nil
+}
+
 func mergeValues(x, y Val) (Val, error) {
 	u, ok := x.(*RecVal)
 	if !ok {
@@ -963,7 +1022,7 @@ func mergeRecVal(x, y, r *RecVal) error {
 			ay, yHasType := y.FieldAnnotations[f]
 			if xHasType && !yHasType {
 				if err := typeCheck(vy, ax.T); err != nil {
-					return err
+					return fmt.Errorf("type error merging record field '%s': %w", f, err)
 				}
 				if ax.T.IsUnit() {
 					if uy, ok := vy.(UnitVal); ok {

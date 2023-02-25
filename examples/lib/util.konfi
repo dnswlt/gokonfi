@@ -1,8 +1,8 @@
 // Showcases the load function and a trick to splice 
 // fields of one record (u2) into another (u1).
 {
-    let u2: load('util2')
-    let u2_dup: load('util2')  // Will not load it again, but return the already loaded module.
+    let u2: load('util2').body
+    let u2_dup: load('util2').body  // Will not load it again, but return the already loaded module.
     u1: {
         max: func(x, y) { if x < y then y else x }
         map: func(f, xs) { flatmap(func (x) { [f(x)] }, xs) }

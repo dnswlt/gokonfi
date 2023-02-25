@@ -20,7 +20,7 @@ func TestLoadModuleSameDir(t *testing.T) {
 	rootPath := path.Join(d, "root.konfi")
 	rootModule := []byte(`
 	{
-		let m: load('util')
+		let m: load('util').body
 		x: m.one
 	}
 	`)
@@ -57,7 +57,7 @@ func TestLoadModuleKonfipath(t *testing.T) {
 	rootPath := path.Join(d1, "root.konfi")
 	rootModule := []byte(`
 	{
-		let m: load('util')
+		let m: load('util').body
 		x: m.one
 	}
 	`)
@@ -93,7 +93,7 @@ func TestLoadModuleSubdir(t *testing.T) {
 	rootPath := path.Join(d, "root.konfi")
 	rootModule := []byte(`
 	{
-		let m: load('sub/util')
+		let m: load('sub/util').body
 		x: m.one
 	}
 	`)

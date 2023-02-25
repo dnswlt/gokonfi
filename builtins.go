@@ -184,7 +184,7 @@ func builtinLoad(args []Val, ctx *Ctx) (Val, error) {
 	if err != nil {
 		return nil, err
 	}
-	return lmod.body, nil
+	return lmod.AsRec(), nil
 }
 
 // str(x any) string

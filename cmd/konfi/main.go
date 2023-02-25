@@ -14,7 +14,7 @@ var (
 )
 
 func init() {
-	flag.StringVar(&outputFormat, "format", "json", "output format (supported: yaml, json)")
+	flag.StringVar(&outputFormat, "format", "yaml", "output format (supported: yaml, json)")
 	flag.BoolVar(&printResult, "p", true, "print result to stdout")
 }
 

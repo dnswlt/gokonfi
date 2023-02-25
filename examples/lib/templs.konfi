@@ -1,0 +1,36 @@
+// This file declares multiple templates to be used in other files.
+
+// A module-local let binding. Not exported.
+let h: 101
+
+// An exported template.
+pub template foo_tmpl(params) {
+    let p: {
+       f::int: 3
+    } @ params
+    a: p.f
+    b: p.f * p.f
+}
+
+// Another exported template.
+pub template noargs() {
+    a: "hello"
+}
+
+// An exported function.
+pub func f(x) { x * x + h }
+
+// Another exported function, in let-shorthand syntax.
+pub let g(x): 17 + 2 * x
+
+// An exported variable (i.e., constant)
+pub let max_retries: 5
+
+// The module body. Available to importing modules as .body.
+{ 
+    x: {
+        val: f(2)
+        desc: "f(2)"
+    }
+    note: "this is the module's body expression"
+}

@@ -1,0 +1,12 @@
+// Loading and using templates from other files.
+
+// h also exists in mult_templ.konfi.
+// (Testing lexical scoping; this h here should not be visible to m.)
+let h: -99
+
+let m: load('lib/templs')
+
+{
+    r: m.foo_tmpl({f: 3}) @ { body: m.body } @ m.noargs()
+    pub_let_in_m: m.max_retries
+}

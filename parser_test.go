@@ -122,7 +122,7 @@ func parseModule(input string) (*Module, error) {
 		return nil, err
 	}
 	p := NewParser(ts)
-	res, err := p.Module()
+	res, err := p.Module("test")
 	if err != nil {
 		return nil, err
 	}
@@ -499,8 +499,8 @@ func TestParseModule(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to parse: %s", err)
 			}
-			if len(m.FuncDecls) != test.wantDecls {
-				t.Errorf("want %d decls, got %d", test.wantDecls, len(m.FuncDecls))
+			if len(m.PubDecl) != test.wantDecls {
+				t.Errorf("want %d decls, got %d", test.wantDecls, len(m.PubDecl))
 			}
 			if len(m.LetVars) != test.wantLets {
 				t.Errorf("want %d decls, got %d", test.wantLets, len(m.LetVars))

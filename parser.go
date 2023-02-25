@@ -36,19 +36,20 @@ func (e *ParseError) Pos() token.Pos {
 // Modules and module-level declarations.
 
 type Module struct {
-	FuncDecls map[string]FuncDecl // Exported functions and templates (which are just functions).
-	LetVars   map[string]LetVar   // Local declarations.
-	Body      Expr
+	Name    string             // Name of this module. Outside of tests this is always its file path.
+	PubDecl map[string]PubDecl // Exported functions and templates (which are just functions).
+	LetVars map[string]LetVar  // Local declarations.
+	Body    Expr
 }
 
-type FuncDecl struct {
+type PubDecl struct {
 	Name    string
-	Func    *FuncExpr
+	X       Expr
 	DeclPos token.Pos // Start of the declaration.
 }
 
-func NewModule() *Module {
-	return &Module{FuncDecls: make(map[string]FuncDecl), LetVars: make(map[string]LetVar)}
+func NewModule(name string) *Module {
+	return &Module{Name: name, PubDecl: make(map[string]PubDecl), LetVars: make(map[string]LetVar)}
 }
 
 // Expression nodes.
@@ -242,8 +243,8 @@ func (e *FuncExpr) End() token.Pos { return e.FuncEnd }
 func (e *FuncExpr) exprNode()      {}
 
 // Module-level declarations.
-func (d *FuncDecl) Pos() token.Pos { return d.DeclPos }
-func (d *FuncDecl) End() token.Pos { return d.Func.End() }
+func (d *PubDecl) Pos() token.Pos { return d.DeclPos }
+func (d *PubDecl) End() token.Pos { return d.X.End() }
 
 // Type annotations.
 
@@ -327,11 +328,11 @@ func ParseModule(input string, file *token.File) (*Module, error) {
 		return nil, err
 	}
 	p := NewParser(ts)
-	return p.Module()
+	return p.Module(file.Name())
 }
 
-func (p *Parser) Module() (*Module, error) {
-	m := NewModule()
+func (p *Parser) Module(name string) (*Module, error) {
+	m := NewModule(name)
 	// Parse declarations.
 	seen := make(map[string]bool)
 Loop:
@@ -339,7 +340,7 @@ Loop:
 		t := p.peek()
 		switch t.Typ {
 		case token.Public:
-			fd, err := p.funcDecl()
+			fd, err := p.pubDecl()
 			if err != nil {
 				return nil, err
 			}
@@ -347,7 +348,7 @@ Loop:
 				return nil, p.failat(t, "duplicate template declaration %q", fd.Name)
 			}
 			seen[fd.Name] = true
-			m.FuncDecls[fd.Name] = fd
+			m.PubDecl[fd.Name] = fd
 		case token.Let:
 			l, err := p.letVar()
 			if err != nil {
@@ -376,32 +377,38 @@ Loop:
 	return m, nil
 }
 
-func (p *Parser) funcDecl() (FuncDecl, error) {
+func (p *Parser) pubDecl() (PubDecl, error) {
 	pub := p.peek()
 	if err := p.expect(token.Public, "pub func or template declaration"); err != nil {
-		return FuncDecl{}, nil
+		return PubDecl{}, nil
 	}
 	switch p.peek().Typ {
 	case token.Template:
 		tmpl, err := p.template()
 		if err != nil {
-			return FuncDecl{}, err
+			return PubDecl{}, err
 		}
 		if tmpl.Name == "" {
-			return FuncDecl{}, p.failat(pub, "module-level template declaration must have a name")
+			return PubDecl{}, p.failat(pub, "module-level template declaration must have a name")
 		}
-		return FuncDecl{Name: tmpl.Name, DeclPos: pub.Pos, Func: tmpl}, nil
+		return PubDecl{Name: tmpl.Name, DeclPos: pub.Pos, X: tmpl}, nil
 	case token.Func:
 		fd, err := p.funk()
 		if err != nil {
-			return FuncDecl{}, err
+			return PubDecl{}, err
 		}
 		if fd.Name == "" {
-			return FuncDecl{}, p.failat(pub, "module-level func declaration must have a name")
+			return PubDecl{}, p.failat(pub, "module-level func declaration must have a name")
 		}
-		return FuncDecl{Name: fd.Name, DeclPos: pub.Pos, Func: fd}, nil
+		return PubDecl{Name: fd.Name, DeclPos: pub.Pos, X: fd}, nil
+	case token.Let:
+		lv, err := p.letVar()
+		if err != nil {
+			return PubDecl{}, err
+		}
+		return PubDecl{Name: lv.Name, DeclPos: pub.Pos, X: lv.X}, nil
 	}
-	return FuncDecl{}, p.failat(pub, "expected func or template")
+	return PubDecl{}, p.failat(p.peek(), "expected func or template")
 }
 
 // Parses an expression.
