@@ -20,7 +20,7 @@ func (r *RecVal) MarshalYAML() (interface{}, error) {
 	return r.Fields, nil
 }
 
-func (xs *ListVal) MarshalYAML() (interface{}, error) {
+func (xs ListVal) MarshalYAML() (interface{}, error) {
 	return xs.Elements, nil
 }
 
@@ -50,7 +50,7 @@ func (r *RecVal) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (xs *ListVal) MarshalJSON() ([]byte, error) {
+func (xs ListVal) MarshalJSON() ([]byte, error) {
 	// json.Marshal will always HTML-encode < > &, so we use this "workaround" :(
 	// Creating a new encoder for each (nested) record is probably not very fast.
 	var buf bytes.Buffer

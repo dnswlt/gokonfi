@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-
-	"github.com/dnswlt/gokonfi/token"
 )
 
 // The most generic error type returned by Konfi functions.
@@ -40,7 +38,8 @@ func chainError(cause error, format string, a ...any) error {
 //
 // In particular, the error message has human-readable indicators
 // for the position at which the error(s) occurred, whenever possible.
-func FormattedError(err error, fs *token.FileSet) error {
+func FormattedError(err error, ctx *Ctx) error {
+	fs := ctx.FileSet()
 	msgs := []string{}
 	for err != nil {
 		switch e := err.(type) {

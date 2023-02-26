@@ -56,6 +56,8 @@ func LoadModule(name string, ctx *Ctx) (*loadedModule, error) {
 	return m, nil
 }
 
+// fileForModule translates a module name as specified in e.g. load('mymodule')
+// to its file path. Looks for a matching file in cwd and [konfiPathEnv].
 func fileForModule(name string, cwd string) (string, bool) {
 	filename := name
 	if !strings.HasSuffix(filename, konfiFileExtension) {

@@ -24,7 +24,7 @@ func TestExamplesDirectory(t *testing.T) {
 		ctx := GlobalCtx()
 		_, err := LoadModule(file, ctx)
 		if err != nil {
-			t.Errorf("Failed to load %s:\n%s", file, FormattedError(err, ctx.FileSet()))
+			t.Errorf("Failed to load %s:\n%s", file, FormattedError(err, ctx))
 		}
 	}
 }

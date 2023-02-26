@@ -295,12 +295,12 @@ func TestEvalListExpr(t *testing.T) {
 		input string
 		want  Val
 	}{
-		{input: "[1, 'a']", want: &ListVal{[]Val{IntVal(1), StringVal("a")}}},
+		{input: "[1, 'a']", want: ListVal{[]Val{IntVal(1), StringVal("a")}}},
 		{input: "len([]) == 0", want: BoolVal(true)},
 		{input: "len([1, 2, 3])", want: IntVal(3)},
 		{input: "if [1] then 'good' else 'bad'", want: StringVal("good")},
 		{input: "if [] then 'bad' else 'good'", want: StringVal("good")},
-		{input: "[[1]]", want: &ListVal{[]Val{&ListVal{[]Val{IntVal(1)}}}}},
+		{input: "[[1]]", want: ListVal{[]Val{ListVal{[]Val{IntVal(1)}}}}},
 	}
 	for i, test := range tests {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
@@ -398,12 +398,12 @@ func TestEvalFunctional(t *testing.T) {
 		field string
 		want  Val
 	}{
-		{field: "xs", want: &ListVal{[]Val{IntVal(2), IntVal(4), IntVal(6)}}},
-		{field: "ys", want: &ListVal{[]Val{IntVal(1), IntVal(4), IntVal(9)}}},
+		{field: "xs", want: ListVal{[]Val{IntVal(2), IntVal(4), IntVal(6)}}},
+		{field: "ys", want: ListVal{[]Val{IntVal(1), IntVal(4), IntVal(9)}}},
 		{field: "z", want: IntVal(4)},
 		{field: "w", want: IntVal(15)},
 		{field: "nil_field", want: NilVal{}},
-		{field: "cs", want: &ListVal{[]Val{StringVal("a"), IntVal(1)}}},
+		{field: "cs", want: ListVal{[]Val{StringVal("a"), IntVal(1)}}},
 	}
 
 	e, err := parse(input)

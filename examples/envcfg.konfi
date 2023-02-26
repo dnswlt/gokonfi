@@ -1,0 +1,36 @@
+// A generic environment config that should work for dev, staging and prod.
+
+pub template task(params) {
+    let p: {
+        env: 'prod'
+        region: 'de-101'
+        cpu_limit: 5
+    } @ params
+    cpu_limit: p.cpu_limit
+    debug_level: cond(contains(p.env, 'dev'), 'DEBUG', 'INFO')
+    subscriber_id: "kafkaesk.${p.env}.${p.region}"
+    // All environments use the same auth token, since they all query the same (prod) db.
+    db_config: {
+        user: "mysystem"
+        db_host: "db.example.com:8181"
+        auth_token: '7dc9e9a64393d1707cc965e69dec9b80c6be4ce5'
+    }
+}
+
+{
+    dev_task: task({env: 'dev'})
+
+    // dev2 is some new environment that requires a few settings
+    // that were not anticipated when the template was defined. They are
+    // too specific and temporary (dev2 won't live very long) to justify
+    // adjusting the template. So instead we just overwrite some fields 
+    // after instantiating the template:
+    dev2_task: task({env: 'dev2'}) @ {
+        // use new auth token for dev2 to test it works as expected.
+        db_config: {
+            auth_token: 'e4114b0e2500d50c5d421df61cd9a5bcf671e0e2'
+        }
+    }
+
+    prod_task: task({env: 'prod'})
+}

@@ -16,26 +16,13 @@ type Val interface {
 	valImpl()
 }
 
-// Marker interface for "lazy" values, which are used during evaluation.
-// They can be one of
+// A lazyVal is a wrapper for "lazy" values, which can be one of
 // - a fully evaluated Val
 // - an Expr that still needs to be evaluated
-type lazyVal interface {
-	lazyImpl()
-}
-
-// An unevaluated expression used as a LazyVal.
-type lazyExpr struct {
+type lazyVal struct {
 	expr Expr
+	val  Val
 }
-
-// A fully evaluated Val used as a LazyVal.
-type fullyEvaluated struct {
-	val Val
-}
-
-func (l *lazyExpr) lazyImpl()       {}
-func (l *fullyEvaluated) lazyImpl() {}
 
 type Ctx struct {
 	vars   *varCtx
@@ -96,6 +83,9 @@ func EmptyCtx() *Ctx {
 	}
 }
 
+// ChildCtx creates a child context of the given parent.
+// It shares the global state with its parent. Changes to the global state
+// will be visible in both.
 func ChildCtx(parent *Ctx) *Ctx {
 	return &Ctx{
 		vars: &varCtx{
@@ -106,6 +96,7 @@ func ChildCtx(parent *Ctx) *Ctx {
 	}
 }
 
+// GlobalCtx returns a context that contains all builtin functions and types.
 func GlobalCtx() *Ctx {
 	ctx := EmptyCtx()
 	for _, builtin := range builtinFunctions {
@@ -117,6 +108,9 @@ func GlobalCtx() *Ctx {
 	return ctx
 }
 
+// Returns the top-level context of ctx. This context typically contains only the
+// builtin functions. It shares the global state with ctx and should be used when
+// loading a module from another module.
 func (ctx *Ctx) dropLocals() *Ctx {
 	// The last varCtx in the chain contains the global variables.
 	l := ctx.vars
@@ -126,6 +120,9 @@ func (ctx *Ctx) dropLocals() *Ctx {
 	return &Ctx{global: ctx.global, vars: l}
 }
 
+// Looks up the value of v in ctx. It also returns the (parent) context
+// in which v is defined. If no definition for v exists, it returns an empty
+// lazyVal and a nil context.
 func (ctx *Ctx) Lookup(v string) (lazyVal, *Ctx) {
 	c := ctx.vars
 	for c != nil {
@@ -134,7 +131,7 @@ func (ctx *Ctx) Lookup(v string) (lazyVal, *Ctx) {
 		}
 		c = c.parent
 	}
-	return nil, nil // Not found
+	return lazyVal{}, nil // Not found
 }
 
 func (ctx *Ctx) LookupType(typeId string) *Typ {
@@ -161,23 +158,23 @@ func (ctx *Ctx) setActive(v string) {
 
 // Checks whether this particular context (ignoring its parents) has
 // fully evaluated variable x. If it does, returns it, else nil.
-func (ctx *Ctx) fullyEvaluated(v string) (val *fullyEvaluated, found bool) {
-	if x, ok := ctx.vars.env[v]; ok {
-		if val, ok := x.(*fullyEvaluated); ok {
-			return val, true
+func (ctx *Ctx) fullyEvaluated(v string) (val Val, found bool) {
+	if lv, ok := ctx.vars.env[v]; ok {
+		if lv.val != nil {
+			return lv.val, true
 		}
 	}
 	return nil, false
 }
 
+// Stores the given value in ctx under name v. Also removes v from the set of active variables.
 func (ctx *Ctx) store(v string, val Val) {
-	ctx.vars.env[v] = &fullyEvaluated{val}
-	// Once a value was stored, it's no longer actively being computed.
+	ctx.vars.env[v] = lazyVal{val: val}
 	delete(ctx.vars.active, v)
 }
 
 func (ctx *Ctx) storeExpr(v string, expr Expr) {
-	ctx.vars.env[v] = &lazyExpr{expr: expr}
+	ctx.vars.env[v] = lazyVal{expr: expr}
 }
 
 func (ctx *Ctx) storeModule(m *loadedModule) {
@@ -191,14 +188,12 @@ func (ctx *Ctx) defineType(name string, typ *Typ) {
 	}
 }
 
-func (ctx *Ctx) defineUnit(name string, typ *Typ) {
-	ctx.global.types[name] = typ
-}
-
 func (ctx *Ctx) addFile(name string, size int) *token.File {
 	return ctx.global.fileset.AddFile(name, size)
 }
 
+// isActiveFile checks if a file with the given name is currently on the
+// evaluation stack. This is used to detect import cycles.
 func (ctx *Ctx) isActiveFile(name string) bool {
 	for _, f := range ctx.global.filestack {
 		if f == name {
@@ -219,6 +214,8 @@ func (ctx *Ctx) popFile() {
 	ctx.global.filestack = ctx.global.filestack[:len(ctx.global.filestack)-1]
 }
 
+// cwd returns the current working directory of ctx. If the stack is not empty,
+// this is always the directory of the file on top of the stack. Otherwise, it is ".".
 func (ctx *Ctx) cwd() string {
 	if len(ctx.global.filestack) == 0 {
 		return "."
@@ -226,15 +223,15 @@ func (ctx *Ctx) cwd() string {
 	return path.Dir(ctx.global.filestack[len(ctx.global.filestack)-1])
 }
 
-// Exposed publicly because it is needed by [FormattedError].
 func (ctx *Ctx) FileSet() *token.FileSet {
 	return ctx.global.fileset
 }
 
+// EvalError is the error type commonly returned if evaluation of an expression or module fails.
 type EvalError struct {
-	pos   token.Pos
-	msg   string
-	cause error
+	pos   token.Pos // Position at which evaluation failed.
+	msg   string    // Error message.
+	cause error     // Optional root cause error.
 }
 
 func (e *EvalError) Error() string {
@@ -252,16 +249,20 @@ func (e *EvalError) Unwrap() error {
 	return e.cause
 }
 
+// RecVal represents record values, a.k.a. dicts, structs, objects.
 type RecVal struct {
 	Fields           map[string]Val
 	FieldAnnotations map[string]*FieldAnnotation // Optional type annotations per field.
 }
 
+// Information about the type annotation attached to a record field,
+// e.g. the minutes in `{ x::minutes }`.
 type FieldAnnotation struct {
 	T *Typ
 	M *UnitMult // optional, only set if T.IsUnit() is true.
 }
 
+// NewRec returns a new record with no fields.
 func NewRec() *RecVal {
 	return &RecVal{Fields: make(map[string]Val), FieldAnnotations: make(map[string]*FieldAnnotation)}
 }
@@ -316,15 +317,6 @@ type FuncExprVal struct {
 	ctx *Ctx // "Closure": Context captured at function declaration
 }
 
-type TypedVal struct {
-	V Val
-	T *Typ
-}
-
-func (v *TypedVal) TypeId() string {
-	return v.T.Id
-}
-
 func (f *NativeFuncVal) Call(args []Val, ctx *Ctx) (Val, error) {
 	// Negative arity means "accept any args".
 	if f.Arity >= 0 && len(args) != f.Arity {
@@ -345,6 +337,15 @@ func (f *FuncExprVal) Call(args []Val, _ *Ctx) (Val, error) {
 	return Eval(f.F.Body, fctx)
 }
 
+type TypedVal struct {
+	V Val
+	T *Typ
+}
+
+func (v *TypedVal) TypeId() string {
+	return v.T.Id
+}
+
 func (v IntVal) valImpl()         {}
 func (v DoubleVal) valImpl()      {}
 func (v UnitVal) valImpl()        {}
@@ -352,7 +353,7 @@ func (v BoolVal) valImpl()        {}
 func (v StringVal) valImpl()      {}
 func (v NilVal) valImpl()         {}
 func (v *RecVal) valImpl()        {}
-func (v *ListVal) valImpl()       {}
+func (v ListVal) valImpl()        {}
 func (v *NativeFuncVal) valImpl() {}
 func (v *FuncExprVal) valImpl()   {}
 func (v *TypedVal) valImpl()      {}
@@ -378,7 +379,7 @@ func (s NilVal) Bool() bool {
 func (r *RecVal) Bool() bool {
 	return len(r.Fields) > 0
 }
-func (r *ListVal) Bool() bool {
+func (r ListVal) Bool() bool {
 	return len(r.Elements) > 0
 }
 func (r *NativeFuncVal) Bool() bool {
@@ -420,7 +421,7 @@ func (s NilVal) String() string {
 func (r *RecVal) String() string {
 	return "<rec>"
 }
-func (r *ListVal) String() string {
+func (r ListVal) String() string {
 	return "<list>"
 }
 func (f *NativeFuncVal) String() string {
@@ -455,7 +456,7 @@ func (s NilVal) Typ() *Typ {
 func (r *RecVal) Typ() *Typ {
 	return builtinTypeRec
 }
-func (r *ListVal) Typ() *Typ {
+func (r ListVal) Typ() *Typ {
 	return builtinTypeList
 }
 func (r *NativeFuncVal) Typ() *Typ {
@@ -502,6 +503,7 @@ func plus(x, y Val) (Val, error) {
 	}
 	return nil, fmt.Errorf("incompatible types for +: %T and %T", x, y)
 }
+
 func minus(x, y Val) (Val, error) {
 	switch u := x.(type) {
 	case IntVal:
@@ -528,6 +530,7 @@ func minus(x, y Val) (Val, error) {
 	}
 	return nil, fmt.Errorf("incompatible types for -: %T and %T", x, y)
 }
+
 func times(x, y Val) (Val, error) {
 	switch u := x.(type) {
 	case IntVal:
@@ -554,6 +557,7 @@ func times(x, y Val) (Val, error) {
 	}
 	return nil, fmt.Errorf("incompatible types for *: %T and %T", x, y)
 }
+
 func div(x, y Val) (Val, error) {
 	switch u := x.(type) {
 	case IntVal:
@@ -574,6 +578,7 @@ func div(x, y Val) (Val, error) {
 	}
 	return nil, fmt.Errorf("incompatible types for /: %T and %T", x, y)
 }
+
 func modulo(x, y Val) (Val, error) {
 	if u, ok := x.(IntVal); ok {
 		if v, ok := y.(IntVal); ok {
@@ -582,9 +587,11 @@ func modulo(x, y Val) (Val, error) {
 	}
 	return nil, fmt.Errorf("incompatible types for %%: %T and %T", x, y)
 }
+
 func logicalAnd(x, y Val) (Val, error) {
 	return BoolVal(x.Bool() && y.Bool()), nil
 }
+
 func logicalOr(x, y Val) (Val, error) {
 	return BoolVal(x.Bool() || y.Bool()), nil
 }
@@ -595,9 +602,11 @@ func logicalOr(x, y Val) (Val, error) {
 func equal(x, y Val) (Val, error) {
 	return BoolVal(x == y), nil
 }
+
 func notEqual(x, y Val) (Val, error) {
 	return BoolVal(x != y), nil
 }
+
 func lessThan(x, y Val) (Val, error) {
 	if u, ok := x.(IntVal); ok {
 		if v, ok := y.(IntVal); ok {
@@ -616,6 +625,7 @@ func lessThan(x, y Val) (Val, error) {
 	}
 	return nil, fmt.Errorf("incompatible types for <: %T and %T", x, y)
 }
+
 func lessEq(x, y Val) (Val, error) {
 	if u, ok := x.(IntVal); ok {
 		if v, ok := y.(IntVal); ok {
@@ -634,6 +644,7 @@ func lessEq(x, y Val) (Val, error) {
 	}
 	return nil, fmt.Errorf("incompatible types for <=: %T and %T", x, y)
 }
+
 func greaterThan(x, y Val) (Val, error) {
 	if u, ok := x.(IntVal); ok {
 		if v, ok := y.(IntVal); ok {
@@ -652,6 +663,7 @@ func greaterThan(x, y Val) (Val, error) {
 	}
 	return nil, fmt.Errorf("incompatible types for >: %T and %T", x, y)
 }
+
 func greaterEq(x, y Val) (Val, error) {
 	if u, ok := x.(IntVal); ok {
 		if v, ok := y.(IntVal); ok {
@@ -787,14 +799,14 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		}
 		return r, nil
 	case *VarExpr:
-		lval, vctx := ctx.Lookup(e.Name)
-		if lval == nil {
+		lv, vctx := ctx.Lookup(e.Name)
+		if vctx == nil {
 			return nil, &EvalError{pos: e.Pos(), msg: fmt.Sprintf("unbound variable %s", e.Name)}
 		}
-		switch lv := lval.(type) {
-		case *fullyEvaluated:
+		switch {
+		case lv.val != nil:
 			return lv.val, nil
-		case *lazyExpr:
+		case lv.expr != nil:
 			if vctx.isActive(e.Name) {
 				return nil, &EvalError{pos: e.Pos(), msg: "cyclic variable dependencies detected"}
 			}
@@ -806,7 +818,7 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 			vctx.store(e.Name, v)
 			return v, nil
 		default:
-			log.Fatalf("Unhandled type for LazyVal: %T", lval)
+			log.Fatalf("lazyVal with nil .val and .expr for variable %s", e.Name)
 		}
 	case *RecExpr:
 		rctx := ChildCtx(ctx)
@@ -848,7 +860,7 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 			cv, found := rctx.fullyEvaluated(f.Name)
 			if found {
 				// Eval of another expression already required evaluation of this field.
-				v = cv.val
+				v = cv
 			} else {
 				var err error
 				rctx.setActive(f.Name)
@@ -882,7 +894,7 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 			}
 			xs[i] = x
 		}
-		return &ListVal{Elements: xs}, nil
+		return ListVal{Elements: xs}, nil
 	case *FieldAcc:
 		v, err := Eval(e.X, ctx)
 		if err != nil {
@@ -942,7 +954,8 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 	return nil, &EvalError{pos: expr.Pos(), msg: fmt.Sprintf("not implemented: %T", expr)}
 }
 
-// Evaluates the given module m and updates the context ctx with m's declarations.
+// Evaluates the given module m.
+// If the module has type or unit declarations, those will be added to ctx.
 func EvalModule(m *Module, ctx *Ctx) (*loadedModule, error) {
 	// Evaluate module-level declarations. This is mostly analogous to how records are evaluated.
 	mctx := ChildCtx(ctx)
@@ -966,7 +979,7 @@ func EvalModule(m *Module, ctx *Ctx) (*loadedModule, error) {
 	pubVars := make(map[string]Val)
 	for _, d := range m.PubDecl {
 		if v, found := mctx.fullyEvaluated(d.Name); found {
-			pubVars[d.Name] = v.val
+			pubVars[d.Name] = v
 			continue
 		}
 		mctx.setActive(d.Name)

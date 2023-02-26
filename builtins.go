@@ -19,6 +19,7 @@ var builtinFunctions = []*NativeFuncVal{
 	{Name: "isnil", Arity: 1, F: builtinIsnil},
 	{Name: "len", Arity: 1, F: builtinLen},
 	{Name: "load", Arity: 1, F: builtinLoad},
+	{Name: "", Arity: 1, F: builtinLoad},
 	{Name: "str", Arity: 1, F: builtinStr},
 	{Name: "substr", Arity: 3, F: builtinSubstr},
 	{Name: "typeof", Arity: 1, F: builtinTypeof},
@@ -59,7 +60,7 @@ func builtinFlatmap(args []Val, ctx *Ctx) (Val, error) {
 	if !ok {
 		return nil, fmt.Errorf("flatmap: 1st argument must be a callable, got %T", args[1])
 	}
-	xs, ok := args[1].(*ListVal)
+	xs, ok := args[1].(ListVal)
 	if !ok {
 		return nil, fmt.Errorf("flatmap: 2nd argument must be a list, got %T", args[0])
 	}
@@ -69,7 +70,7 @@ func builtinFlatmap(args []Val, ctx *Ctx) (Val, error) {
 		if err != nil {
 			return nil, fmt.Errorf("flatmap: call failed: %w", err)
 		}
-		if ys, ok := fx.(*ListVal); ok {
+		if ys, ok := fx.(ListVal); ok {
 			// f returned a list (as it should): append all elements to the result.
 			result = append(result, ys.Elements...)
 		} else {
@@ -77,7 +78,7 @@ func builtinFlatmap(args []Val, ctx *Ctx) (Val, error) {
 			result = append(result, ys)
 		}
 	}
-	return &ListVal{Elements: result}, nil
+	return ListVal{Elements: result}, nil
 }
 
 // Three argument fold:
@@ -93,7 +94,7 @@ func builtinFold(args []Val, ctx *Ctx) (Val, error) {
 	if !ok {
 		return nil, fmt.Errorf("fold: 1st argument must be a callable, got %T", args[1])
 	}
-	xs, ok := args[2].(*ListVal)
+	xs, ok := args[2].(ListVal)
 	if !ok {
 		return nil, fmt.Errorf("fold: 3nd argument must be a list, got %T", args[0])
 	}
@@ -115,7 +116,7 @@ func builtinFold1(args []Val, ctx *Ctx) (Val, error) {
 	if !ok {
 		return nil, fmt.Errorf("fold: 1st argument must be a callable, got %T", args[1])
 	}
-	xs, ok := args[1].(*ListVal)
+	xs, ok := args[1].(ListVal)
 	if !ok {
 		return nil, fmt.Errorf("fold: 2nd argument must be a list, got %T", args[0])
 	}
@@ -166,7 +167,7 @@ func builtinLen(args []Val, ctx *Ctx) (Val, error) {
 		return IntVal(len(arg)), nil
 	case *RecVal:
 		return IntVal(len(arg.Fields)), nil
-	case *ListVal:
+	case ListVal:
 		return IntVal(len(arg.Elements)), nil
 	}
 	return nil, fmt.Errorf("len: invalid type: %T", args[0])
