@@ -2,6 +2,7 @@ package gokonfi
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -19,7 +20,7 @@ var builtinFunctions = []*NativeFuncVal{
 	{Name: "isnil", Arity: 1, F: builtinIsnil},
 	{Name: "len", Arity: 1, F: builtinLen},
 	{Name: "load", Arity: 1, F: builtinLoad},
-	{Name: "", Arity: 1, F: builtinLoad},
+	{Name: "regexp_extract", Arity: -1, F: builtinRegexpExtract},
 	{Name: "str", Arity: 1, F: builtinStr},
 	{Name: "substr", Arity: 3, F: builtinSubstr},
 	{Name: "typeof", Arity: 1, F: builtinTypeof},
@@ -92,11 +93,11 @@ func builtinFold(args []Val, ctx *Ctx) (Val, error) {
 	}
 	f, ok := args[0].(CallableVal)
 	if !ok {
-		return nil, fmt.Errorf("fold: 1st argument must be a callable, got %T", args[1])
+		return nil, fmt.Errorf("fold: 1st argument must be a callable, got %T", args[0])
 	}
 	xs, ok := args[2].(ListVal)
 	if !ok {
-		return nil, fmt.Errorf("fold: 3nd argument must be a list, got %T", args[0])
+		return nil, fmt.Errorf("fold: 3nd argument must be a list, got %T", args[1])
 	}
 	accu := args[1]
 	for _, x := range xs.Elements {
@@ -112,13 +113,14 @@ func builtinFold(args []Val, ctx *Ctx) (Val, error) {
 // Two-argument fold:
 // fold(f func('b, 'b)'b, xs []'b ) 'b
 func builtinFold1(args []Val, ctx *Ctx) (Val, error) {
+	// We expect the right number of arguments here, since this function is not exposed.
 	f, ok := args[0].(CallableVal)
 	if !ok {
-		return nil, fmt.Errorf("fold: 1st argument must be a callable, got %T", args[1])
+		return nil, fmt.Errorf("fold: 1st argument must be a callable, got %T", args[0])
 	}
 	xs, ok := args[1].(ListVal)
 	if !ok {
-		return nil, fmt.Errorf("fold: 2nd argument must be a list, got %T", args[0])
+		return nil, fmt.Errorf("fold: 2nd argument must be a list, got %T", args[1])
 	}
 	if len(xs.Elements) == 0 {
 		return NilVal{}, nil
@@ -186,6 +188,47 @@ func builtinLoad(args []Val, ctx *Ctx) (Val, error) {
 		return nil, err
 	}
 	return lmod.AsRec(), nil
+}
+
+// regexp_extract(s string, regexp string [, group_index int]) string
+func builtinRegexpExtract(args []Val, ctx *Ctx) (Val, error) {
+	if len(args) != 3 && len(args) != 2 {
+		return nil, fmt.Errorf("regexp_extract: invalid number of arguments: %d", len(args))
+	}
+	sv, ok := args[0].(StringVal)
+	if !ok {
+		return nil, fmt.Errorf("regexp_extract: 1st argument must be a string, got %s", args[0].Typ().Id)
+	}
+	s := string(sv)
+	regexpStr, ok := args[1].(StringVal)
+	if !ok {
+		return nil, fmt.Errorf("regexp_extract: 2nd argument must be a string, got %s", args[1].Typ().Id)
+	}
+	group_index := 0
+	if len(args) == 3 {
+		if gi, ok := args[2].(IntVal); !ok {
+			return nil, fmt.Errorf("regexp_extract: 3rd argument must be an int, got %s", args[2].Typ().Id)
+		} else if int(gi) < 0 {
+			return nil, fmt.Errorf("regexp_extract: group_index must be >= 0, got %d", gi)
+		} else {
+			group_index = int(gi)
+		}
+	}
+	re, err := regexp.Compile(string(regexpStr))
+	if err != nil {
+		return nil, fmt.Errorf("regexp_extract: %w", err)
+	}
+	if group_index == 0 {
+		r := re.FindString(s)
+		return StringVal(r), nil
+	}
+	i := group_index * 2
+	xs := re.FindStringSubmatchIndex(s)
+	if xs == nil || i >= len(xs) || xs[i] < 0 {
+		return StringVal(""), nil // No match
+	}
+	r := s[xs[i]:xs[i+1]]
+	return StringVal(r), nil
 }
 
 // str(x any) string
