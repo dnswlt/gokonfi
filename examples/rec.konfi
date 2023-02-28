@@ -19,4 +19,10 @@
     n_2: "/path/to/${a.x}"
 
     rec_str: str({})
+
+    // mkrec creates a record dynamically from field names and values:
+    dynamic_rec: mkrec('a', 3, 'b', 'oz')
+    // This also works if we pass in a single flat list:
+    dynamic_rec_list: mkrec(['a', 3, 'b', 'oz'])
+
 }

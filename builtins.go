@@ -20,6 +20,7 @@ var builtinFunctions = []*NativeFuncVal{
 	{Name: "isnil", Arity: 1, F: builtinIsnil},
 	{Name: "len", Arity: 1, F: builtinLen},
 	{Name: "load", Arity: 1, F: builtinLoad},
+	{Name: "mkrec", Arity: -1, F: builtinMkrec},
 	{Name: "regexp_extract", Arity: -1, F: builtinRegexpExtract},
 	{Name: "str", Arity: 1, F: builtinStr},
 	{Name: "substr", Arity: 3, F: builtinSubstr},
@@ -188,6 +189,36 @@ func builtinLoad(args []Val, ctx *Ctx) (Val, error) {
 		return nil, err
 	}
 	return lmod.AsRec(), nil
+}
+
+// The constructor for records. Useful to generate dynamic records
+// whose field names are only known at runtime.
+// mkrec(f string, fv any [, f string, fv any]*) record
+func builtinMkrec(args []Val, ctx *Ctx) (Val, error) {
+	if len(args) == 1 {
+		lv, ok := args[0].(ListVal)
+		if !ok {
+			return nil, fmt.Errorf("mkrec: 1-argument version expects a list argument, got %s", args[0].Typ().Id)
+		}
+		return recFromList(lv.Elements)
+	}
+	return recFromList(args)
+}
+
+func recFromList(xs []Val) (*RecVal, error) {
+	// Expect list of pairs of field name and field value.
+	if len(xs)%2 != 0 {
+		return nil, fmt.Errorf("mkrec: expected an even number of elements [field name, field value]*")
+	}
+	r := NewRec()
+	for i := 0; i < len(xs)/2; i++ {
+		f, ok := xs[i*2].(StringVal)
+		if !ok {
+			return nil, fmt.Errorf("mkrec: expected string at list index %d, got %s", i*2, xs[i*2].Typ().Id)
+		}
+		r.setField(string(f), xs[i*2+1], nil)
+	}
+	return r, nil
 }
 
 // regexp_extract(s string, regexp string [, group_index int]) string

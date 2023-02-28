@@ -35,7 +35,7 @@ func (t *Typ) UnitMultiplier(name string) (u *UnitMult, found bool) {
 	return nil, false
 }
 
-func (t *Typ) UnitMultiplierName(factor float64) (name string, found bool) {
+func (t *Typ) unitMultiplierName(factor float64) (name string, found bool) {
 	for _, u := range t.UnitMults {
 		if u.Factor == factor {
 			return u.Name, true

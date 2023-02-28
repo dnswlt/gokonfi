@@ -400,7 +400,7 @@ func (v DoubleVal) String() string {
 	return strconv.FormatFloat(float64(v), 'f', -1, 64)
 }
 func (v UnitVal) String() string {
-	if n, ok := v.T.UnitMultiplierName(v.F); ok {
+	if n, ok := v.T.unitMultiplierName(v.F); ok {
 		f := strconv.FormatFloat(v.V, 'f', -1, 64)
 		return f + "::" + n
 	}

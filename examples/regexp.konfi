@@ -1,10 +1,10 @@
-pub template test(s, re) {
+let template test(s, re) {
     input: s
     regexp: re
     result: regexp_extract(s, re)
 }
 
-pub template testg(s, re, group) {
+let template testg(s, re, group) {
     input: s
     regexp: re
     result: regexp_extract(s, re, group)
