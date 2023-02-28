@@ -2,43 +2,27 @@ package gokonfi
 
 import (
 	"fmt"
-	"sort"
 	"strconv"
-	"strings"
 
 	"github.com/dnswlt/gokonfi/token"
 )
 
-type UnitMult struct {
-	Name   string
-	Factor float64
-}
-
 type Typ struct {
 	Id        string
-	Convert   CallableVal // (any) -> Self
-	Unwrap    CallableVal // (Self) -> Val
-	Validate  CallableVal // (Self) -> bool
-	UnitMults []UnitMult  // Non-nil for unit types. Sorted by Name.
+	Convert   CallableVal        // (any) -> Self
+	Unwrap    CallableVal        // (Self) -> Val
+	Validate  CallableVal        // (Self) -> bool
+	UnitMults map[string]float64 // Non-nil only for unit types.
 }
 
 func (t *Typ) IsUnit() bool {
 	return len(t.UnitMults) > 0
 }
 
-func (t *Typ) UnitMultiplier(name string) (u *UnitMult, found bool) {
-	if i, found := sort.Find(len(t.UnitMults), func(i int) int {
-		return strings.Compare(name, t.UnitMults[i].Name)
-	}); found {
-		return &t.UnitMults[i], true
-	}
-	return nil, false
-}
-
 func (t *Typ) unitMultiplierName(factor float64) (name string, found bool) {
-	for _, u := range t.UnitMults {
-		if u.Factor == factor {
-			return u.Name, true
+	for n, f := range t.UnitMults {
+		if f == factor {
+			return n, true
 		}
 	}
 	return "", false
@@ -79,15 +63,16 @@ var (
 			},
 			Arity: 1,
 		},
-		UnitMults: []UnitMult{
-			{"nanos", 1},
-			{"micros", 1000},
-			{"millis", 1000 * 1000},
-			{"seconds", 1000 * 1000 * 1000},
-			{"minutes", 1000 * 1000 * 1000 * 60},
-			{"hours", 1000 * 1000 * 1000 * 60 * 60},
-			{"days", 1000 * 1000 * 1000 * 60 * 60 * 24},
-		}}
+		UnitMults: map[string]float64{
+			"nanos":   1,
+			"micros":  1000,
+			"millis":  1000 * 1000,
+			"seconds": 1000 * 1000 * 1000,
+			"minutes": 1000 * 1000 * 1000 * 60,
+			"hours":   1000 * 1000 * 1000 * 60 * 60,
+			"days":    1000 * 1000 * 1000 * 60 * 60 * 24,
+		},
+	}
 
 	// Gets further extended in the init function.
 	builtinTypes = []*Typ{
@@ -109,10 +94,6 @@ func init() {
 	builtinTypeDuration.Convert.(*NativeFuncVal).F = func(args []Val, ctx *Ctx) (Val, error) {
 		return builtinUnitTypeConvert(builtinTypeDuration, args, ctx)
 	}
-	// TODO: this sorting requirement is a bit silly.
-	sort.Slice(builtinTypeDuration.UnitMults, func(i, j int) bool {
-		return builtinTypeDuration.UnitMults[i].Name < builtinTypeDuration.UnitMults[j].Name
-	})
 }
 
 func builtinUnitTypeConvert(typ *Typ, args []Val, _ *Ctx) (Val, error) {
@@ -123,11 +104,10 @@ func builtinUnitTypeConvert(typ *Typ, args []Val, _ *Ctx) (Val, error) {
 	if !ok {
 		return nil, fmt.Errorf("%s.Convert: want 1st argument as StringVal, got %T", typ.Id, args[0])
 	}
-	m, ok := typ.UnitMultiplier(string(unit))
+	f, ok := typ.UnitMults[string(unit)]
 	if !ok {
 		return nil, fmt.Errorf("%s.Convert: invalid unit %s", typ.Id, unit)
 	}
-	f := m.Factor
 	switch v := args[1].(type) {
 	case DoubleVal:
 		return UnitVal{V: float64(v), F: f, T: typ}, nil

@@ -183,8 +183,8 @@ func (ctx *Ctx) storeModule(m *loadedModule) {
 
 func (ctx *Ctx) defineType(name string, typ *Typ) {
 	ctx.global.types[name] = typ
-	for _, m := range typ.UnitMults {
-		ctx.global.types[m.Name] = typ
+	for n := range typ.UnitMults {
+		ctx.global.types[n] = typ
 	}
 }
 
@@ -259,7 +259,7 @@ type RecVal struct {
 // e.g. the minutes in `{ x::minutes }`.
 type FieldAnnotation struct {
 	T *Typ
-	M *UnitMult // optional, only set if T.IsUnit() is true.
+	M float64 // optional, only nonzero for unit types (for which T.IsUnit() is true).
 }
 
 // NewRec returns a new record with no fields.
@@ -405,8 +405,7 @@ func (v UnitVal) String() string {
 		return f + "::" + n
 	}
 	// A UnitVal with an unknown unit is an interpreter bug.
-	log.Fatalf("UnitVal %s with invalid factor %f", v.TypeId(), v.F)
-	return ""
+	panic(fmt.Sprintf("UnitVal %s with invalid factor %f", v.TypeId(), v.F))
 }
 
 func (b BoolVal) String() string {
@@ -844,7 +843,7 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		rec := NewRec()
 		for _, f := range e.Fields {
 			var t *Typ
-			var m *UnitMult
+			m := 0.
 			if f.T != nil {
 				t = rctx.LookupType(f.T.TypeId())
 				if t == nil {
@@ -853,7 +852,7 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 				if t.IsUnit() {
 					// f.T may be the unit type itself (allowing any multiplier),
 					// so UnitMultiplier may return nil here.
-					m, _ = t.UnitMultiplier(f.T.TypeId())
+					m, _ = t.UnitMults[f.T.TypeId()]
 				}
 			}
 			var v Val
@@ -875,8 +874,8 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 				if err := typeCheck(v, t); err != nil {
 					return nil, &EvalError{pos: f.T.Pos(), msg: fmt.Sprintf("type error for field %s: %s", f.Name, err)}
 				}
-				if u, ok := v.(UnitVal); ok && m != nil {
-					v = u.WithF(m.Factor)
+				if u, ok := v.(UnitVal); ok && m > 0. {
+					v = u.WithF(m)
 				}
 				rec.setField(f.Name, v, &FieldAnnotation{T: t, M: m})
 			} else {
@@ -1039,8 +1038,8 @@ func mergeRecVal(x, y, r *RecVal) error {
 				}
 				if ax.T.IsUnit() {
 					if uy, ok := vy.(UnitVal); ok {
-						if ax.M != nil {
-							vy = uy.WithF(ax.M.Factor)
+						if ax.M > 0 {
+							vy = uy.WithF(ax.M)
 						}
 					} else {
 						// Implementation error if we end up here: if vy passes the type check for tx,

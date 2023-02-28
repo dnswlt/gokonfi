@@ -176,8 +176,8 @@ func TestEvalRecExpr(t *testing.T) {
 
 func TestEvalTypedRecField(t *testing.T) {
 	u := func(x float64, name string) UnitVal {
-		if f, found := builtinTypeDuration.UnitMultiplier(name); found {
-			return UnitVal{V: x, F: f.Factor, T: builtinTypeDuration}
+		if f, found := builtinTypeDuration.UnitMults[name]; found {
+			return UnitVal{V: x, F: f, T: builtinTypeDuration}
 		}
 		t.Fatalf("invalid unit multiple name: %s", name)
 		return UnitVal{}
@@ -572,8 +572,8 @@ func TestEvalTypedExpr(t *testing.T) {
 
 func TestDurationUnit(t *testing.T) {
 	u := func(x float64, name string) UnitVal {
-		if f, found := builtinTypeDuration.UnitMultiplier(name); found {
-			return UnitVal{V: x, F: f.Factor, T: builtinTypeDuration}
+		if f, found := builtinTypeDuration.UnitMults[name]; found {
+			return UnitVal{V: x, F: f, T: builtinTypeDuration}
 		}
 		t.Fatalf("invalid unit multiple name: %s", name)
 		return UnitVal{}
