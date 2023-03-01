@@ -659,3 +659,54 @@ func TestEvalTypedExprError(t *testing.T) {
 		})
 	}
 }
+
+// evalSelfContainedModule is a test helper that loads a module from a string
+// (instead of from a file). The module must not load any other modules or data.
+func evalSelfContainedModule(input string, ctx *Ctx) (*loadedModule, error) {
+	const dummyFilename = "test"
+	file := ctx.addFile(dummyFilename, len(input))
+	mod, err := ParseModule(input, file)
+	if err != nil {
+		return nil, err
+	}
+	// Evaluate module and store it in context.
+	m, err := EvalModule(mod, ctx)
+	if err != nil {
+		return nil, err
+	}
+	ctx.storeModule(m)
+	return m, nil
+}
+
+func TestUnitDecl(t *testing.T) {
+	input := `
+		pub unit foo {
+			multiples: {
+				bar: dbl(1)
+				baz: dbl(10)
+			}
+		}
+		let dbl(x): 2 * x
+		{
+			x::bar: 10::baz
+		}.x`
+	// Load module and check result.
+	ctx := GlobalCtx()
+	m, err := evalSelfContainedModule(input, ctx)
+	if err != nil {
+		t.Fatalf("failed to load module: %s", err)
+	}
+	got, ok := m.body.(UnitVal)
+	if !ok {
+		t.Fatalf("expected IntVal, got %T", m.body)
+	}
+	typ := ctx.LookupType("foo")
+	if typ == nil {
+		t.Fatalf("type foo not defined in ctx")
+	}
+	want := UnitVal{V: 100., F: 2., T: typ}
+	opts := cmpopts.IgnoreInterfaces(struct{ CallableVal }{})
+	if diff := cmp.Diff(got, want, opts); diff != "" {
+		t.Fatalf("UnitVal mismatch (-want +got):\n%s", diff)
+	}
+}

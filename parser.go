@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 
 	"github.com/dnswlt/gokonfi/token"
 )
@@ -36,10 +37,11 @@ func (e *ParseError) Pos() token.Pos {
 // Modules and module-level declarations.
 
 type Module struct {
-	Name    string             // Name of this module. Outside of tests this is always its file path.
-	PubDecl map[string]PubDecl // Exported functions and templates (which are just functions).
-	LetVars map[string]LetVar  // Local declarations.
-	Body    Expr
+	Name      string              // Name of this module. Outside of tests this is always its file path.
+	UnitDecls map[string]UnitDecl // Exported unit type declarations.
+	PubDecls  map[string]PubDecl  // Exported functions and templates (which are just functions).
+	LetVars   map[string]LetVar   // Local declarations.
+	Body      Expr                // Optional module body.
 }
 
 type PubDecl struct {
@@ -48,8 +50,19 @@ type PubDecl struct {
 	DeclPos token.Pos // Start of the declaration.
 }
 
+type UnitDecl struct {
+	Name      string
+	Multiples *RecExpr
+	DeclPos   token.Pos // Start of the declaration.
+}
+
 func NewModule(name string) *Module {
-	return &Module{Name: name, PubDecl: make(map[string]PubDecl), LetVars: make(map[string]LetVar)}
+	return &Module{
+		Name:      name,
+		PubDecls:  make(map[string]PubDecl),
+		LetVars:   make(map[string]LetVar),
+		UnitDecls: make(map[string]UnitDecl),
+	}
 }
 
 // Expression nodes.
@@ -333,22 +346,34 @@ func ParseModule(input string, file *token.File) (*Module, error) {
 
 func (p *Parser) Module(name string) (*Module, error) {
 	m := NewModule(name)
+	seen := make(map[string]bool) // Seen let and pub decls
 	// Parse declarations.
-	seen := make(map[string]bool)
 Loop:
 	for !p.AtEnd() {
 		t := p.peek()
 		switch t.Typ {
 		case token.Public:
-			fd, err := p.pubDecl()
-			if err != nil {
-				return nil, err
+			p.advance()
+			if p.peek().Typ == token.Unit {
+				ud, err := p.unitDecl()
+				if err != nil {
+					return nil, err
+				}
+				if _, found := m.UnitDecls[ud.Name]; found {
+					return nil, p.failat(t, "duplicate unit declaration %q", ud.Name)
+				}
+				m.UnitDecls[ud.Name] = ud
+			} else {
+				fd, err := p.pubDecl()
+				if err != nil {
+					return nil, err
+				}
+				if seen[fd.Name] {
+					return nil, p.failat(t, "duplicate template declaration %q", fd.Name)
+				}
+				seen[fd.Name] = true
+				m.PubDecls[fd.Name] = fd
 			}
-			if seen[fd.Name] {
-				return nil, p.failat(t, "duplicate template declaration %q", fd.Name)
-			}
-			seen[fd.Name] = true
-			m.PubDecl[fd.Name] = fd
 		case token.Let:
 			l, err := p.letVar()
 			if err != nil {
@@ -377,10 +402,44 @@ Loop:
 	return m, nil
 }
 
+func (p *Parser) unitDecl() (UnitDecl, error) {
+	start := p.peek().Pos
+	if err := p.expect(token.Unit, "unitDecl"); err != nil {
+		return UnitDecl{}, err
+	}
+	t := p.advance()
+	if t.Typ != token.Ident {
+		return UnitDecl{}, p.failat(t, "expected identifier (unit type name), got %s", t.Typ)
+	}
+	name := t.Val
+	r, err := p.record()
+	if err != nil {
+		return UnitDecl{}, err
+	}
+	multiples, ok := r.Fields["multiples"]
+	if !ok {
+		return UnitDecl{}, p.failat(t, "unit declaration must define multiples")
+	}
+	unknownFields := []string{}
+	for f := range r.Fields {
+		if f != "multiples" {
+			unknownFields = append(unknownFields, f)
+		}
+	}
+	if len(unknownFields) != 0 {
+		return UnitDecl{}, p.failat(t, "unit declaration with invalid fields: %s", strings.Join(unknownFields, ","))
+	}
+	mults, ok := multiples.X.(*RecExpr)
+	if !ok {
+		return UnitDecl{}, p.failat(t, "unit multiples must be a record")
+	}
+	return UnitDecl{Name: name, Multiples: mults, DeclPos: start}, nil
+}
+
 func (p *Parser) pubDecl() (PubDecl, error) {
-	pub := p.peek()
-	if err := p.expect(token.Public, "pub func or template declaration"); err != nil {
-		return PubDecl{}, nil
+	pub := p.previous()
+	if pub.Typ != token.Public {
+		panic("pubDecl: expected pub keyword as previous token")
 	}
 	switch p.peek().Typ {
 	case token.Template:
@@ -791,7 +850,7 @@ func (p *Parser) template() (*FuncExpr, error) {
 	return &FuncExpr{Name: name, Params: params, FuncPos: startPos, FuncEnd: p.previous().End, Body: body}, nil
 }
 
-func (p *Parser) record() (Expr, error) {
+func (p *Parser) record() (*RecExpr, error) {
 	if !p.match(token.LeftBrace) {
 		return nil, p.fail("expected '{' token to parse record, got %s", p.peek().Val)
 	}

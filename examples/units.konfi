@@ -1,0 +1,40 @@
+// User-defined units.
+
+pub unit bytes {
+    multiples: {
+        KB: 1000
+        KiB: 1024
+        MB: KB * 1000
+        MiB: KiB * 1024
+        GB: MB * 1000
+        GiB: MiB * 1024
+        TB: GB * 1000
+        TiB: GiB * 1024
+        PB: TB * 1000
+        PiB: TiB * 1024
+    }
+}
+
+pub unit distance {
+    multiples: {
+        nanometer: 1e-9
+        micrometer: 1e-6
+        millimeter: 1e-3
+        centimeter: 1e-2
+        meter: 1.
+        kilometer: 1000
+        inch: 25.4 * millimeter
+        foot: 12. * inch
+        yard: 3. * foot
+        mile: 1609.344 * meter
+    }
+}
+
+{
+    tib_to_mib::MiB: 1::TiB
+
+    kilometer_to_yard::yard: 1::kilometer
+
+    kilometer_to_mile::mile: 1::kilometer
+}
+

@@ -499,8 +499,8 @@ func TestParseModule(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to parse: %s", err)
 			}
-			if len(m.PubDecl) != test.wantDecls {
-				t.Errorf("want %d decls, got %d", test.wantDecls, len(m.PubDecl))
+			if len(m.PubDecls) != test.wantDecls {
+				t.Errorf("want %d decls, got %d", test.wantDecls, len(m.PubDecls))
 			}
 			if len(m.LetVars) != test.wantLets {
 				t.Errorf("want %d decls, got %d", test.wantLets, len(m.LetVars))
@@ -567,5 +567,36 @@ func TestParseModuleError(t *testing.T) {
 			}
 		})
 	}
+}
 
+func TestParseUnitDecl(t *testing.T) {
+	input := `
+pub unit bytes {
+    multiples: {
+        bytes: 1  // This is the base unit. All other units are expressed as multiples.
+        KB: 1000
+        KiB: 1024
+        MB: KB * 1000
+        MiB: KiB * 1024
+        GB: MB * 1000
+        GiB: MiB * 1024
+        TB: GB * 1000
+        TiB: GiB * 1024
+        PB: TB * 1000
+        PiB: TiB * 1024
+    }
+}`
+	m, err := parseModule(input)
+	if err != nil {
+		t.Fatalf("could not parse module: %s", err)
+	}
+	ud, ok := m.UnitDecls["bytes"]
+	if !ok {
+		t.Fatalf("no unit declaration found for bytes")
+	}
+	gotLen := len(ud.Multiples.Fields)
+	wantLen := 11
+	if gotLen != wantLen {
+		t.Errorf("Want %d multiples, got %d", wantLen, gotLen)
+	}
 }

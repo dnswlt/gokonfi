@@ -60,6 +60,8 @@ const (
 	Then     // then
 	Else     // else
 	Public   // pub
+	Unit     // unit
+	Type     // type
 	// Don't treat end of input as an error, but use a special token.
 	EndOfInput
 )

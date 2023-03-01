@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -16,6 +17,14 @@ func EncodeAsYaml(v Val) (string, error) {
 	return string(bs), err
 }
 
+func (x DoubleVal) MarshalYAML() (interface{}, error) {
+	f := float64(x)
+	if math.Trunc(f) == f {
+		return int64(f), nil
+	}
+	return f, nil
+}
+
 func (r *RecVal) MarshalYAML() (interface{}, error) {
 	return r.Fields, nil
 }
@@ -25,7 +34,11 @@ func (xs ListVal) MarshalYAML() (interface{}, error) {
 }
 
 func (x UnitVal) MarshalYAML() (interface{}, error) {
-	return x.V, nil
+	v := float64(x.V)
+	if math.Trunc(v) == v {
+		return int64(v), nil
+	}
+	return v, nil
 }
 
 func (f *FuncExprVal) MarshalYAML() (interface{}, error) {

@@ -28,6 +28,35 @@ func (t *Typ) unitMultiplierName(factor float64) (name string, found bool) {
 	return "", false
 }
 
+// NewUnitType returns a new unit type. Callers must populate its UnitMults afterwards.
+func NewUnitType(name string, unitMults map[string]float64) *Typ {
+	t := &Typ{
+		Id:        name,
+		UnitMults: make(map[string]float64),
+	}
+	t.Convert = &NativeFuncVal{
+		Name: name + ".Convert",
+		F: func(args []Val, ctx *Ctx) (Val, error) {
+			return builtinUnitTypeConvert(t, args, ctx)
+		},
+		Arity: 2,
+	}
+	t.Unwrap = &NativeFuncVal{
+		Name: name + ".Unwrap",
+		F: func(args []Val, ctx *Ctx) (Val, error) {
+			return builtinUnitTypeUnwrap(t, args, ctx)
+		},
+		Arity: 1,
+	}
+	// Copy unitMults so callers don't accidentally modify them.
+	um := make(map[string]float64)
+	for k, v := range unitMults {
+		um[k] = v
+	}
+	t.UnitMults = um
+	return t
+}
+
 var (
 	// Predefine built-in types, so we can use == comparisons for those.
 	builtinTypeBool       = &Typ{Id: "bool"}
@@ -39,40 +68,15 @@ var (
 	builtinTypeList       = &Typ{Id: "list"}
 	builtinTypeNativeFunc = &Typ{Id: "builtin"}
 	builtinTypeFuncExpr   = &Typ{Id: "func"}
-	builtinTypeDuration   = &Typ{
-		Id: "duration",
-		Convert: &NativeFuncVal{
-			Name:  "duration.Convert",
-			F:     nil, // initialized in init() to avoid a cycle.
-			Arity: 2,
-		},
-		Unwrap: &NativeFuncVal{
-			Name: "duration.Unwrap",
-			F: func(args []Val, ctx *Ctx) (Val, error) {
-				if len(args) != 1 {
-					return nil, fmt.Errorf("duration.Unwrap: want 1 argument, got %d", len(args))
-				}
-				uval, ok := args[0].(UnitVal)
-				if !ok {
-					return nil, fmt.Errorf("duration.Unwrap: want UnitVal argument, got %T", args[0])
-				}
-				if uval.TypeId() != "duration" {
-					return nil, fmt.Errorf("duration.Unwrap: called on invalid type: %s", uval.TypeId())
-				}
-				return DoubleVal(uval.V), nil
-			},
-			Arity: 1,
-		},
-		UnitMults: map[string]float64{
-			"nanos":   1,
-			"micros":  1000,
-			"millis":  1000 * 1000,
-			"seconds": 1000 * 1000 * 1000,
-			"minutes": 1000 * 1000 * 1000 * 60,
-			"hours":   1000 * 1000 * 1000 * 60 * 60,
-			"days":    1000 * 1000 * 1000 * 60 * 60 * 24,
-		},
-	}
+	builtinTypeDuration   = NewUnitType("duration", map[string]float64{
+		"nanos":   1,
+		"micros":  1000,
+		"millis":  1000 * 1000,
+		"seconds": 1000 * 1000 * 1000,
+		"minutes": 1000 * 1000 * 1000 * 60,
+		"hours":   1000 * 1000 * 1000 * 60 * 60,
+		"days":    1000 * 1000 * 1000 * 60 * 60 * 24,
+	})
 
 	// Gets further extended in the init function.
 	builtinTypes = []*Typ{
@@ -88,13 +92,6 @@ var (
 		builtinTypeDuration,
 	}
 )
-
-func init() {
-	// Initialize Convert function(s) here to avoid a cyclic dependency.
-	builtinTypeDuration.Convert.(*NativeFuncVal).F = func(args []Val, ctx *Ctx) (Val, error) {
-		return builtinUnitTypeConvert(builtinTypeDuration, args, ctx)
-	}
-}
 
 func builtinUnitTypeConvert(typ *Typ, args []Val, _ *Ctx) (Val, error) {
 	if len(args) != 2 {
@@ -123,6 +120,20 @@ func builtinUnitTypeConvert(typ *Typ, args []Val, _ *Ctx) (Val, error) {
 		}
 	}
 	return nil, fmt.Errorf("%s.Convert: cannot convert from type %T", typ.Id, args[1])
+}
+
+func builtinUnitTypeUnwrap(typ *Typ, args []Val, _ *Ctx) (Val, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("%s.Unwrap: want 1 argument, got %d", typ.Id, len(args))
+	}
+	uval, ok := args[0].(UnitVal)
+	if !ok {
+		return nil, fmt.Errorf("%s.Unwrap: want UnitVal argument, got %T", typ.Id, args[0])
+	}
+	if uval.TypeId() != typ.Id {
+		return nil, fmt.Errorf("%s.Unwrap: called on invalid type: %s", typ.Id, uval.TypeId())
+	}
+	return DoubleVal(uval.V), nil
 }
 
 func convertType(val Val, typeName string, ctx *Ctx, pos token.Pos) (Val, error) {

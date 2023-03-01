@@ -208,3 +208,31 @@ func TestLoadModuleSyntaxError(t *testing.T) {
 		t.Errorf("Wrong error position: want <filename>:%d:%d, got %s", wantLine, wantCol, p.String())
 	}
 }
+
+func TestLoadModuleNoBody(t *testing.T) {
+	if testing.Short() {
+		// Don't run tests writing to disk in -short mode.
+		return
+	}
+	input := []byte(`
+		pub let f(x): x + 1
+		pub unit foo {
+			multiples: {
+				bar: f(0)
+				baz: 10
+			}
+		}`)
+	d := t.TempDir()
+	// Write modules to disk.
+	mPath := path.Join(d, "m.konfi")
+	os.WriteFile(mPath, input, 0644)
+	// Load module and check result.
+	ctx := GlobalCtx()
+	_, err := LoadModule(mPath, ctx)
+	if err != nil {
+		t.Fatalf("failed to load module: %s", err)
+	}
+	if ctx.LookupType("foo") == nil {
+		t.Errorf("type foo not declared")
+	}
+}

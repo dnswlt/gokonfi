@@ -23,6 +23,8 @@ var (
 		"template": token.Template,
 		"then":     token.Then,
 		"true":     token.BoolLiteral,
+		"type":     token.Type,
+		"unit":     token.Unit,
 	}
 	// Used to extract integer and double literals.
 	numberRegexp = regexp.MustCompile(`^(?:\d+[eE][+-]?\d+|\d*\.\d+(?:[eE][+-]?\d+)?|\d+\.\d*(?:[eE][+-]?\d+)?|(\d+))`)

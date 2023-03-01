@@ -108,15 +108,15 @@ method __plus__(x::minute, y::second) { (60 * x::int + y::int)::second }
 // of type duration, but have different units.
 // Units only make sense for numeric types, I suppose.
 
-type duration <: int {
-    units {
+pub unit duration {
+    multiples: {
         nanos: 1  // This is the base unit. All other units are expressed as multiples.
         micros: nanos * 1000
         millis: micros * 1000
         seconds: millis * 1000
         minutes: seconds * 60
         hours: minutes * 60
-        days: hours * 24
+        days: hours * 24        
     }
 }
 

@@ -47,7 +47,7 @@ type globalCtx struct {
 type loadedModule struct {
 	name    string         // Name of this module. In practice, always its file path.
 	pubVars map[string]Val // Declared pub(lic) variables of the module.
-	body    Val            // The final (optional) module body. This is nil if not present.
+	body    Val            // The final (optional) module body. Set to NilVal{} if not present.
 }
 
 func (m *loadedModule) Body() Val {
@@ -103,7 +103,7 @@ func GlobalCtx() *Ctx {
 		ctx.store(builtin.Name, builtin)
 	}
 	for _, typ := range builtinTypes {
-		ctx.defineType(typ.Id, typ)
+		ctx.defineType(typ)
 	}
 	return ctx
 }
@@ -181,8 +181,8 @@ func (ctx *Ctx) storeModule(m *loadedModule) {
 	ctx.global.modules[m.name] = m
 }
 
-func (ctx *Ctx) defineType(name string, typ *Typ) {
-	ctx.global.types[name] = typ
+func (ctx *Ctx) defineType(typ *Typ) {
+	ctx.global.types[typ.Id] = typ
 	for n := range typ.UnitMults {
 		ctx.global.types[n] = typ
 	}
@@ -950,20 +950,50 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		}
 		return convertType(val, e.T.TypeId(), ctx, e.Pos())
 	}
-	return nil, &EvalError{pos: expr.Pos(), msg: fmt.Sprintf("not implemented: %T", expr)}
+	return nil, &EvalError{pos: expr.Pos(), msg: fmt.Sprintf("Eval: not implemented: %T", expr)}
 }
 
 // Evaluates the given module m.
 // If the module has type or unit declarations, those will be added to ctx.
 func EvalModule(m *Module, ctx *Ctx) (*loadedModule, error) {
-	// Evaluate module-level declarations. This is mostly analogous to how records are evaluated.
 	mctx := ChildCtx(ctx)
 	for _, d := range m.LetVars {
 		mctx.storeExpr(d.Name, d.X)
 	}
-	for _, d := range m.PubDecl {
+	for _, d := range m.PubDecls {
 		mctx.storeExpr(d.Name, d.X)
 	}
+	// Evaluate type declarations first. Types declared in a module can be used by
+	// expressions, pub declarations and let bindings in that module. But the opposite
+	// is not true: types declarations can only use what's already defined before the
+	// module is evaluated and those declarations of the module that don't depend on the
+	// type being declared.
+	for _, d := range m.UnitDecls {
+		val, err := Eval(d.Multiples, mctx)
+		if err != nil {
+			return nil, err
+		}
+		rv, ok := val.(*RecVal)
+		if !ok {
+			panic(fmt.Sprintf("*RecExpr must evaluate to *RecVal, got %s", rv.Typ().Id))
+		}
+		// Collect multiples
+		unitMults := make(map[string]float64)
+		for f, v := range rv.Fields {
+			// Can be either int or double, for convenience.
+			switch u := v.(type) {
+			case IntVal:
+				unitMults[f] = float64(u)
+			case DoubleVal:
+				unitMults[f] = float64(u)
+			default:
+				return nil, &EvalError{pos: d.Multiples.Fields[f].X.Pos(), msg: fmt.Sprintf("Invalid type for multiplier %s: %s", f, v.Typ().Id)}
+			}
+		}
+		t := NewUnitType(d.Name, unitMults)
+		ctx.defineType(t)
+	}
+	// Evaluate module-level declarations. This is mostly analogous to how records are evaluated.
 	for _, d := range m.LetVars {
 		if _, found := mctx.fullyEvaluated(d.Name); found {
 			continue
@@ -976,7 +1006,7 @@ func EvalModule(m *Module, ctx *Ctx) (*loadedModule, error) {
 		mctx.store(d.Name, v)
 	}
 	pubVars := make(map[string]Val)
-	for _, d := range m.PubDecl {
+	for _, d := range m.PubDecls {
 		if v, found := mctx.fullyEvaluated(d.Name); found {
 			pubVars[d.Name] = v
 			continue
@@ -990,12 +1020,15 @@ func EvalModule(m *Module, ctx *Ctx) (*loadedModule, error) {
 		pubVars[d.Name] = v
 	}
 	// Evaluate body in a context that is aware of all declarations.
-	body, err := Eval(m.Body, mctx)
-	if err != nil {
-		return nil, err
+	var body Val = NilVal{}
+	if m.Body != nil {
+		v, err := Eval(m.Body, mctx)
+		if err != nil {
+			return nil, err
+		}
+		body = v
 	}
-	lmod := &loadedModule{name: m.Name, pubVars: pubVars, body: body}
-	return lmod, nil
+	return &loadedModule{name: m.Name, pubVars: pubVars, body: body}, nil
 }
 
 func mergeValues(x, y Val) (Val, error) {
