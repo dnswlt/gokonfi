@@ -3,6 +3,8 @@ package gokonfi
 import (
 	"fmt"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestFormatSingleArg(t *testing.T) {
@@ -52,6 +54,63 @@ func TestIsnil(t *testing.T) {
 			}
 			if got != BoolVal(test.want) {
 				t.Errorf("Want: %v, got %v", test.want, got)
+			}
+		})
+	}
+}
+
+func TestLenientParseTime(t *testing.T) {
+	r := func(vals []int) *RecVal {
+		fields := []string{"year", "month", "day", "hour", "minute", "second", "nanosecond", "offset"}
+		rec := NewRec()
+		for i, f := range fields {
+			v := 0
+			if i < len(vals) {
+				v = vals[i]
+			}
+			rec.setField(f, IntVal(v), nil)
+		}
+		return rec
+	}
+	tests := []struct {
+		name  string
+		input string
+		want  []int // year, month, day, hour, minute, second, nanosecond, offset(seconds)
+	}{
+		{
+			name:  "local_datetime",
+			input: "2022-02-03 17:55:10",
+			want:  []int{2022, 2, 3, 17, 55, 10},
+		},
+		{
+			name:  "datetime_with_offset",
+			input: "2022-02-03 17:55:10.1001 -0700",
+			want:  []int{2022, 2, 3, 17, 55, 10, 100100000, -7 * 60 * 60},
+		},
+		{
+			name:  "iso_8601",
+			input: "2022-02-03T17:55:10.1001-07:00",
+			want:  []int{2022, 2, 3, 17, 55, 10, 100100000, -7 * 60 * 60},
+		},
+		{
+			name:  "iso_date",
+			input: "2022-02-03",
+			want:  []int{2022, 2, 3},
+		},
+		{
+			name:  "rfc1123z",
+			input: "Wed, 22 Feb 2023 08:39:36 +0100",
+			want:  []int{2023, 2, 22, 8, 39, 36, 0, 60 * 60},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := builtinLenientParseTime([]Val{StringVal(test.input)}, nil)
+			if err != nil {
+				t.Fatalf("Error calling lenient_parse_time: %s", err)
+			}
+			if diff := cmp.Diff(r(test.want), got); diff != "" {
+				t.Errorf("record mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

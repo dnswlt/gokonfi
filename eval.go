@@ -356,7 +356,7 @@ func (v *RecVal) valImpl()        {}
 func (v ListVal) valImpl()        {}
 func (v *NativeFuncVal) valImpl() {}
 func (v *FuncExprVal) valImpl()   {}
-func (v *TypedVal) valImpl()      {}
+func (v TypedVal) valImpl()       {}
 
 func (x IntVal) Bool() bool {
 	return x != 0
@@ -465,7 +465,6 @@ func (r *FuncExprVal) Typ() *Typ {
 	return builtinTypeFuncExpr
 }
 func (v TypedVal) Typ() *Typ {
-	// User defined types for now cannot overwrite the truthiness of values.
 	return v.T
 }
 
@@ -820,70 +819,7 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 			log.Fatalf("lazyVal with nil .val and .expr for variable %s", e.Name)
 		}
 	case *RecExpr:
-		rctx := ChildCtx(ctx)
-		// Prepare context by storing lazy expressions of all fields.
-		for _, lv := range e.LetVars {
-			rctx.storeExpr(lv.Name, lv.X)
-		}
-		for _, f := range e.Fields {
-			rctx.storeExpr(f.Name, f.X)
-		}
-		// Evaluate all let vars and fields.
-		for _, lv := range e.LetVars {
-			if _, found := rctx.fullyEvaluated(lv.Name); found {
-				continue
-			}
-			rctx.setActive(lv.Name)
-			v, err := Eval(lv.X, rctx)
-			if err != nil {
-				return nil, err
-			}
-			rctx.store(lv.Name, v)
-		}
-		rec := NewRec()
-		for _, f := range e.Fields {
-			var t *Typ
-			m := 0.
-			if f.T != nil {
-				t = rctx.LookupType(f.T.TypeId())
-				if t == nil {
-					return nil, &EvalError{pos: f.T.Pos(), msg: fmt.Sprintf("unknown type %s for field %s", f.T.TypeId(), f.Name)}
-				}
-				if t.IsUnit() {
-					// f.T may be the unit type itself (allowing any multiplier),
-					// so UnitMultiplier may return nil here.
-					m, _ = t.UnitMults[f.T.TypeId()]
-				}
-			}
-			var v Val
-			cv, found := rctx.fullyEvaluated(f.Name)
-			if found {
-				// Eval of another expression already required evaluation of this field.
-				v = cv
-			} else {
-				var err error
-				rctx.setActive(f.Name)
-				v, err = Eval(f.X, rctx)
-				if err != nil {
-					return nil, err
-				}
-				rctx.store(f.Name, v)
-			}
-			if t != nil {
-				// Typed field
-				if err := typeCheck(v, t); err != nil {
-					return nil, &EvalError{pos: f.T.Pos(), msg: fmt.Sprintf("type error for field %s: %s", f.Name, err)}
-				}
-				if u, ok := v.(UnitVal); ok && m > 0. {
-					v = u.WithF(m)
-				}
-				rec.setField(f.Name, v, &FieldAnnotation{T: t, M: m})
-			} else {
-				// t == nil => Untyped field
-				rec.setField(f.Name, v, nil)
-			}
-		}
-		return rec, nil
+		return evalRec(e, ctx)
 	case *ListExpr:
 		xs := make([]Val, len(e.Elements))
 		for i, elem := range e.Elements {
@@ -904,10 +840,17 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 			if v, ok := r.Fields[e.Name]; ok {
 				return v, nil
 			}
-			// TODO: Add DotPos to FieldAcc.
+			// TODO: Add DotPos to FieldAcc for a more accurate position.
 			return nil, &EvalError{pos: e.End(), msg: fmt.Sprintf("record has no field '%s'", e.Name)}
+		case TypedVal:
+			if rv, ok := r.V.(*RecVal); ok {
+				if v, ok := rv.Fields[e.Name]; ok {
+					return v, nil
+				}
+			}
+			return nil, &EvalError{pos: e.End(), msg: fmt.Sprintf("%s has no field '%s'", r.Typ().Id, e.Name)}
 		default:
-			return nil, &EvalError{pos: e.End(), msg: fmt.Sprintf("cannot access .%s on type %T", e.Name, e)}
+			return nil, &EvalError{pos: e.End(), msg: fmt.Sprintf("cannot access .%s on type %s", e.Name, r.Typ().Id)}
 		}
 	case *CallExpr:
 		fe, err := Eval(e.Func, ctx)
@@ -951,6 +894,73 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 		return convertType(val, e.T.TypeId(), ctx, e.Pos())
 	}
 	return nil, &EvalError{pos: expr.Pos(), msg: fmt.Sprintf("Eval: not implemented: %T", expr)}
+}
+
+func evalRec(e *RecExpr, ctx *Ctx) (Val, error) {
+	rctx := ChildCtx(ctx)
+	// Prepare context by storing lazy expressions of all fields.
+	for _, lv := range e.LetVars {
+		rctx.storeExpr(lv.Name, lv.X)
+	}
+	for _, f := range e.Fields {
+		rctx.storeExpr(f.Name, f.X)
+	}
+	// Evaluate all let vars and fields.
+	for _, lv := range e.LetVars {
+		if _, found := rctx.fullyEvaluated(lv.Name); found {
+			continue
+		}
+		rctx.setActive(lv.Name)
+		v, err := Eval(lv.X, rctx)
+		if err != nil {
+			return nil, err
+		}
+		rctx.store(lv.Name, v)
+	}
+	rec := NewRec()
+	for _, f := range e.Fields {
+		var t *Typ
+		m := 0.
+		if f.T != nil {
+			t = rctx.LookupType(f.T.TypeId())
+			if t == nil {
+				return nil, &EvalError{pos: f.T.Pos(), msg: fmt.Sprintf("unknown type %s for field %s", f.T.TypeId(), f.Name)}
+			}
+			if t.IsUnit() {
+				// f.T may be the unit type itself (allowing any multiplier),
+				// so UnitMults may return 0 here.
+				m = t.UnitMults[f.T.TypeId()]
+			}
+		}
+		var v Val
+		cv, found := rctx.fullyEvaluated(f.Name)
+		if found {
+			// Eval of another expression already required evaluation of this field.
+			v = cv
+		} else {
+			var err error
+			rctx.setActive(f.Name)
+			v, err = Eval(f.X, rctx)
+			if err != nil {
+				return nil, err
+			}
+			rctx.store(f.Name, v)
+		}
+		if t != nil {
+			// Typed field
+			if err := typeCheck(v, t); err != nil {
+				return nil, &EvalError{pos: f.T.Pos(), msg: fmt.Sprintf("type error for field %s: %s", f.Name, err)}
+			}
+			if u, ok := v.(UnitVal); ok && m > 0. {
+				v = u.WithF(m)
+			}
+			rec.setField(f.Name, v, &FieldAnnotation{T: t, M: m})
+		} else {
+			// t == nil => Untyped field
+			rec.setField(f.Name, v, nil)
+		}
+	}
+	return rec, nil
 }
 
 // Evaluates the given module m.
@@ -1086,10 +1096,10 @@ func mergeRecVal(x, y, r *RecVal) error {
 				targetType = ay
 			}
 			// TODO: TypedVal is not properly supported here: we wouldn't recurse into a typed rec.
-			if _, ok := vx.(*TypedVal); ok {
+			if _, ok := vx.(TypedVal); ok {
 				return fmt.Errorf("merging TypedVal is not implemented")
 			}
-			if _, ok := vy.(*TypedVal); ok {
+			if _, ok := vy.(TypedVal); ok {
 				return fmt.Errorf("merging TypedVal is not implemented")
 			}
 			if ry, ok := vy.(*RecVal); ok {

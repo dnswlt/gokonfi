@@ -3,14 +3,15 @@ package gokonfi
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/dnswlt/gokonfi/token"
 )
 
 type Typ struct {
 	Id        string
-	Convert   CallableVal        // (any) -> Self
-	Unwrap    CallableVal        // (Self) -> Val
+	Convert   CallableVal        // (string, any) -> Self
+	Encode    CallableVal        // (Self) -> Val
 	Validate  CallableVal        // (Self) -> bool
 	UnitMults map[string]float64 // Non-nil only for unit types.
 }
@@ -31,8 +32,7 @@ func (t *Typ) unitMultiplierName(factor float64) (name string, found bool) {
 // NewUnitType returns a new unit type. Callers must populate its UnitMults afterwards.
 func NewUnitType(name string, unitMults map[string]float64) *Typ {
 	t := &Typ{
-		Id:        name,
-		UnitMults: make(map[string]float64),
+		Id: name,
 	}
 	t.Convert = &NativeFuncVal{
 		Name: name + ".Convert",
@@ -41,10 +41,10 @@ func NewUnitType(name string, unitMults map[string]float64) *Typ {
 		},
 		Arity: 2,
 	}
-	t.Unwrap = &NativeFuncVal{
-		Name: name + ".Unwrap",
+	t.Encode = &NativeFuncVal{
+		Name: name + ".Encode",
 		F: func(args []Val, ctx *Ctx) (Val, error) {
-			return builtinUnitTypeUnwrap(t, args, ctx)
+			return builtinUnitTypeEncode(t, args, ctx)
 		},
 		Arity: 1,
 	}
@@ -58,7 +58,7 @@ func NewUnitType(name string, unitMults map[string]float64) *Typ {
 }
 
 var (
-	// Predefine built-in types, so we can use == comparisons for those.
+	// Predefine built-in types. Type comparisons generally use pointer equality (==), so don't duplicate these types.
 	builtinTypeBool       = &Typ{Id: "bool"}
 	builtinTypeInt        = &Typ{Id: "int"}
 	builtinTypeDouble     = &Typ{Id: "double"}
@@ -77,8 +77,10 @@ var (
 		"hours":   1000 * 1000 * 1000 * 60 * 60,
 		"days":    1000 * 1000 * 1000 * 60 * 60 * 24,
 	})
+	builtinTypeTime = makeBuiltinTypeTime()
 
-	// Gets further extended in the init function.
+	// This slice contains all predefined (builtin) types. Add new types here to make them
+	// available in konfi.
 	builtinTypes = []*Typ{
 		builtinTypeBool,
 		builtinTypeInt,
@@ -90,8 +92,54 @@ var (
 		builtinTypeNativeFunc,
 		builtinTypeFuncExpr,
 		builtinTypeDuration,
+		builtinTypeTime,
 	}
 )
+
+func makeBuiltinTypeTime() *Typ {
+	t := &Typ{Id: "time"}
+	t.Convert = &NativeFuncVal{
+		Name: "time.Convert",
+		F: func(args []Val, ctx *Ctx) (Val, error) {
+			switch a := args[1].(type) {
+			case StringVal:
+				tm, err := builtinLenientParseTime([]Val{a}, nil)
+				if err != nil {
+					return nil, err
+				}
+				return TypedVal{V: tm, T: t}, nil
+			}
+			return nil, fmt.Errorf("time.Convert: invalid argument type %s", args[0].Typ().Id)
+		},
+		Arity: 2,
+	}
+	t.Encode = &NativeFuncVal{
+		Name: "time.Encode",
+		F: func(args []Val, ctx *Ctx) (Val, error) {
+			switch a := args[0].(type) {
+			case TypedVal:
+				if a.T != t {
+					break
+				}
+				r := a.V.(*RecVal)
+				intf := func(f string) int {
+					i, ok := r.Fields[f].(IntVal)
+					if !ok {
+						return 0
+					}
+					return int(i)
+				}
+				loc := time.FixedZone("A51", intf("offset"))
+				tm := time.Date(intf("year"), time.Month(intf("month")), intf("day"),
+					intf("hour"), intf("minute"), intf("second"), intf("nanosecond"), loc)
+				return StringVal(tm.Format("2006-01-02T15:04:05Z07:00")), nil
+			}
+			return nil, fmt.Errorf("time.Encode: invalid argument type %s", args[0].Typ().Id)
+		},
+		Arity: 1,
+	}
+	return t
+}
 
 func builtinUnitTypeConvert(typ *Typ, args []Val, _ *Ctx) (Val, error) {
 	if len(args) != 2 {
@@ -122,16 +170,16 @@ func builtinUnitTypeConvert(typ *Typ, args []Val, _ *Ctx) (Val, error) {
 	return nil, fmt.Errorf("%s.Convert: cannot convert from type %T", typ.Id, args[1])
 }
 
-func builtinUnitTypeUnwrap(typ *Typ, args []Val, _ *Ctx) (Val, error) {
+func builtinUnitTypeEncode(typ *Typ, args []Val, _ *Ctx) (Val, error) {
 	if len(args) != 1 {
-		return nil, fmt.Errorf("%s.Unwrap: want 1 argument, got %d", typ.Id, len(args))
+		return nil, fmt.Errorf("%s.Encode: want 1 argument, got %d", typ.Id, len(args))
 	}
 	uval, ok := args[0].(UnitVal)
 	if !ok {
-		return nil, fmt.Errorf("%s.Unwrap: want UnitVal argument, got %T", typ.Id, args[0])
+		return nil, fmt.Errorf("%s.Encode: want UnitVal argument, got %T", typ.Id, args[0])
 	}
 	if uval.TypeId() != typ.Id {
-		return nil, fmt.Errorf("%s.Unwrap: called on invalid type: %s", typ.Id, uval.TypeId())
+		return nil, fmt.Errorf("%s.Encode: called on invalid type: %s", typ.Id, uval.TypeId())
 	}
 	return DoubleVal(uval.V), nil
 }

@@ -6,7 +6,7 @@
 //
 // * arbitrary (user-defined) validation functions:
 //   x::intrange(0, 100)   ==> error if x == 101
-// * implicit conversions: (1::minute + 10::second) ==> 70::second
+// * conversions: (1::minute + 10::second) ==> 70::second
 // * output formatting: {year: 2023 month: 1 day: 3} :: iso_date ==> "2023-01-03"
 //
 // Here we explore what this could look like concretely.

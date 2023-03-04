@@ -36,5 +36,6 @@ pub unit distance {
     kilometer_to_yard::yard: 1::kilometer
 
     kilometer_to_mile::mile: 1::kilometer
-}
 
+    timexxx: "2023-01-02"::time
+}

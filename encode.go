@@ -41,12 +41,20 @@ func (x UnitVal) MarshalYAML() (interface{}, error) {
 	return v, nil
 }
 
+func (x TypedVal) MarshalYAML() (interface{}, error) {
+	if x.T.Encode != nil {
+		return x.T.Encode.Call([]Val{x}, nil)
+	}
+	// Types that don't define an Encode function are simply unwrapped.
+	return x.V, nil
+}
+
 func (f *FuncExprVal) MarshalYAML() (interface{}, error) {
-	return nil, fmt.Errorf("Cannot encode function expressions in YAML")
+	return nil, fmt.Errorf("cannot encode function expressions in YAML")
 }
 
 func (f *NativeFuncVal) MarshalYAML() (interface{}, error) {
-	return nil, fmt.Errorf("Cannot encode native functions in YAML")
+	return nil, fmt.Errorf("cannot encode native functions in YAML")
 }
 
 // JSON encoding.
@@ -79,6 +87,18 @@ func (t UnitVal) MarshalJSON() ([]byte, error) {
 	// json.Marshal will always HTML-encode < > &, so we use this "workaround" :(
 	// Creating a new encoder for each (nested) record is probably not very fast.
 	return json.Marshal(t.V)
+}
+
+func (x TypedVal) MarshalJSON() ([]byte, error) {
+	if x.T.Encode != nil {
+		v, err := x.T.Encode.Call([]Val{x}, nil)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(v)
+	}
+	// Types that don't define an Encode function are simply unwrapped.
+	return json.Marshal(x.V)
 }
 
 func (r NilVal) MarshalJSON() ([]byte, error) {

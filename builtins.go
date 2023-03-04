@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // Declaration of all built-in functions. Whatever we add here
@@ -19,6 +20,7 @@ var builtinFunctions = []*NativeFuncVal{
 	{Name: "format", Arity: -1, F: builtinFormat},
 	{Name: "isnil", Arity: 1, F: builtinIsnil},
 	{Name: "len", Arity: 1, F: builtinLen},
+	{Name: "lptime", Arity: 1, F: builtinLenientParseTime},
 	{Name: "load", Arity: 1, F: builtinLoad},
 	{Name: "mkrec", Arity: -1, F: builtinMkrec},
 	{Name: "regexp_extract", Arity: -1, F: builtinRegexpExtract},
@@ -174,6 +176,36 @@ func builtinLen(args []Val, ctx *Ctx) (Val, error) {
 		return IntVal(len(arg.Elements)), nil
 	}
 	return nil, fmt.Errorf("len: invalid type: %T", args[0])
+}
+
+func builtinLenientParseTime(args []Val, _ *Ctx) (Val, error) {
+	s, ok := args[0].(StringVal)
+	if !ok {
+		return nil, fmt.Errorf("load: expected string argument got: %s", args[0].Typ().Id)
+	}
+	layouts := []string{
+		"2006-01-02 15:04:05 -0700",
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04:05Z07:00",
+		"2006-01-02",
+		time.RFC1123Z,
+	}
+	for _, l := range layouts {
+		if tm, err := time.Parse(l, string(s)); err == nil {
+			r := NewRec()
+			r.setField("year", IntVal(tm.Year()), nil)
+			r.setField("month", IntVal(tm.Month()), nil)
+			r.setField("day", IntVal(tm.Day()), nil)
+			r.setField("hour", IntVal(tm.Hour()), nil)
+			r.setField("minute", IntVal(tm.Minute()), nil)
+			r.setField("second", IntVal(tm.Second()), nil)
+			r.setField("nanosecond", IntVal(tm.Nanosecond()), nil)
+			_, offset := tm.Zone()
+			r.setField("offset", IntVal(offset), nil)
+			return r, nil
+		}
+	}
+	return nil, fmt.Errorf("could not parse time %q", s)
 }
 
 // builtinLoad loads a module (file) and stores it in the context.

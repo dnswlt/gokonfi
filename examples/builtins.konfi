@@ -1,0 +1,54 @@
+{
+
+    strings: {
+        extract_substring: substr("monkey", 1, 3) == "on"
+        contains_substring: contains("monkey", "key")
+    }
+
+    parsing_dates: {
+        // lptime ("lenient parse time") expands to a record with .year, .month, etc. fields.
+        date1: lptime("2022-01-31")
+        // lptime is flexible and accepts many common formats.
+        date2: lptime("2022-01-31 17:00:37.234 +0200")
+        date3: lptime("Mon, 02 Jan 2006 15:04:05 +0000")
+        date4: lptime("2023-03-01T14:59:32+01:00")
+        date5: lptime("2023-03-01T14:59:32Z")
+    }
+
+    regular_expressions: {
+        // The only builtin regular expression function is the powerful regexp_extract.
+
+        let regexp_match(s, re): regexp_extract(s, re) != ""
+        match_via_extract: regexp_match("this text has style", "st.le")
+
+        extract_match: regexp_extract("foo baar baz", "ba*r")
+
+        extract_group: regexp_extract("Hi, John, how are you?", "Hi, (\\w+),", 1)
+    }
+
+    length: {
+        len_of_list: len([1, 2, 3])
+        // The length of a string is the number of its utf-8 bytes.
+        len_of_str: len("motör") == 6
+        // The length of a record is the number of its fields.
+        len_of_rec: len({
+            let ignored: 0
+            a: 1
+            b: 2
+        })
+    }
+
+    dynamic_records: {
+        dynamic_rec: mkrec('a', 1, 'b', 2)
+        dynamic_rec_list: mkrec(['c', 3, 'd', 4])
+        // If you want to build a record from a list of pairs, use concat:
+        dynamic_rec_pairs: mkrec(concat([['e', 5], ['f', 6]]))
+    }
+
+
+
+    // Some functional programming pearls, created using the builtin flatmap and fold functions.
+    let identity(x): x
+    let concat(xs): flatmap(identity, xs)
+
+}

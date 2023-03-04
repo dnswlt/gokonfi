@@ -608,7 +608,7 @@ func TestDurationUnit(t *testing.T) {
 	}
 	opts := []cmp.Option{
 		cmpopts.IgnoreFields(Typ{}, "Convert"),
-		cmpopts.IgnoreFields(Typ{}, "Unwrap"),
+		cmpopts.IgnoreFields(Typ{}, "Encode"),
 		cmpopts.IgnoreFields(Typ{}, "Validate"),
 	}
 	for _, test := range tests {
@@ -705,8 +705,36 @@ func TestUnitDecl(t *testing.T) {
 		t.Fatalf("type foo not defined in ctx")
 	}
 	want := UnitVal{V: 100., F: 2., T: typ}
+	// Ignore function fields in Typ.
 	opts := cmpopts.IgnoreInterfaces(struct{ CallableVal }{})
 	if diff := cmp.Diff(got, want, opts); diff != "" {
 		t.Fatalf("UnitVal mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestEvalTime(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  Val
+	}{
+		{name: "time", input: `("2022-01-31"::time).year`, want: IntVal(2022)},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			e, err := parse(test.input)
+			if err != nil {
+				t.Fatalf("Cannot parse expression: %s", err)
+			}
+			got, err := Eval(e, GlobalCtx())
+			if err != nil {
+				t.Fatalf("Failed to evaluate: %s", err)
+			}
+			// Ignore function fields in Typ.
+			opts := cmpopts.IgnoreInterfaces(struct{ CallableVal }{})
+			if diff := cmp.Diff(test.want, got, opts); diff != "" {
+				t.Errorf("Value mismatch (-want +got):\n%s", diff)
+			}
+		})
 	}
 }

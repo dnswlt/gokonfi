@@ -41,6 +41,7 @@ func chainError(cause error, format string, a ...any) error {
 func FormattedError(err error, ctx *Ctx) error {
 	fs := ctx.FileSet()
 	msgs := []string{}
+Loop:
 	for err != nil {
 		switch e := err.(type) {
 		case *KonfiError:
@@ -65,7 +66,7 @@ func FormattedError(err error, ctx *Ctx) error {
 			msgs = append(msgs, fmt.Sprintf("%s: %s", p.String(), e.msg))
 		default:
 			msgs = append(msgs, err.Error())
-			break // Don't unwrap external errors.
+			break Loop // Don't unwrap external errors.
 		}
 		err = errors.Unwrap(err)
 	}

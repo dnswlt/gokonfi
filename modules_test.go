@@ -37,7 +37,7 @@ func TestLoadModuleSameDir(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *RecVal, got %T", m.body)
 	}
-	got, ok := r.Fields["x"]
+	got := r.Fields["x"]
 	if got != IntVal(1) {
 		t.Errorf("want 1, got: %v", got)
 	}
@@ -74,7 +74,7 @@ func TestLoadModuleKonfipath(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *RecVal, got %T", m.body)
 	}
-	got, ok := r.Fields["x"]
+	got := r.Fields["x"]
 	if got != IntVal(1) {
 		t.Errorf("want 1, got: %v", got)
 	}
@@ -110,7 +110,7 @@ func TestLoadModuleSubdir(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *RecVal, got %T", m.body)
 	}
-	got, ok := r.Fields["x"]
+	got := r.Fields["x"]
 	if got != IntVal(1) {
 		t.Errorf("want 1, got: %v", got)
 	}
