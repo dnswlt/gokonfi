@@ -1,6 +1,7 @@
 package gokonfi
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -23,6 +24,7 @@ var builtinFunctions = []*NativeFuncVal{
 	{Name: "lptime", Arity: 1, F: builtinLenientParseTime},
 	{Name: "load", Arity: 1, F: builtinLoad},
 	{Name: "mkrec", Arity: -1, F: builtinMkrec},
+	{Name: "pcall", Arity: -1, F: builtinPcall},
 	{Name: "regexp_extract", Arity: -1, F: builtinRegexpExtract},
 	{Name: "str", Arity: 1, F: builtinStr},
 	{Name: "substr", Arity: 3, F: builtinSubstr},
@@ -51,22 +53,50 @@ func builtinContains(args []Val, ctx *Ctx) (Val, error) {
 
 // error(s string) error
 func builtinError(args []Val, ctx *Ctx) (Val, error) {
-	switch s := args[0].(type) {
-	case StringVal:
-		return nil, fmt.Errorf(string(s))
+	return nil, &ValError{V: args[0]}
+}
+
+func pcallResult(value Val, err bool) Val {
+	return NewRecWithFields(map[string]Val{
+		"value": value,
+		"err":   BoolVal(err),
+	})
+}
+
+// From Lua: call f with optional args. Pass through the return value
+// if f does not raise an error. Otherwise, return the error.
+// pcall(f func, [arg any]*) any
+func builtinPcall(args []Val, ctx *Ctx) (Val, error) {
+	if len(args) == 0 {
+		return nil, fmt.Errorf("pcall: expect at least one (function) argument")
 	}
-	return nil, fmt.Errorf("error: invalid argument type: %T", args[0])
+	f, ok := args[0].(CallableVal)
+	if !ok {
+		return nil, fmt.Errorf("pcall: 1st argument must be a callable, got %s", args[0].Typ().Id)
+	}
+	v, err := f.Call(args[1:], ctx)
+	if err != nil {
+		var valErr *ValError
+		// Try to unwrap ValueError.
+		// Note that errors may be chained, our Eval routine does not pass ValueErrors through unchanged.
+		if errors.As(err, &valErr) {
+			return pcallResult(valErr.V, true), nil
+
+		}
+		return nil, err
+	}
+	return pcallResult(v, false), nil
 }
 
 // flatmap(f func('a)[]'b, xs []'a) []'b
 func builtinFlatmap(args []Val, ctx *Ctx) (Val, error) {
 	f, ok := args[0].(CallableVal)
 	if !ok {
-		return nil, fmt.Errorf("flatmap: 1st argument must be a callable, got %T", args[1])
+		return nil, fmt.Errorf("flatmap: 1st argument must be a callable, got %s", args[0].Typ().Id)
 	}
 	xs, ok := args[1].(ListVal)
 	if !ok {
-		return nil, fmt.Errorf("flatmap: 2nd argument must be a list, got %T", args[0])
+		return nil, fmt.Errorf("flatmap: 2nd argument must be a list, got %s", args[1].Typ().Id)
 	}
 	result := []Val{}
 	for _, x := range xs.Elements {
@@ -184,11 +214,11 @@ func builtinLenientParseTime(args []Val, _ *Ctx) (Val, error) {
 		return nil, fmt.Errorf("load: expected string argument got: %s", args[0].Typ().Id)
 	}
 	layouts := []string{
-		"2006-01-02 15:04:05 -0700",
-		"2006-01-02 15:04:05",
-		"2006-01-02T15:04:05Z07:00",
-		"2006-01-02",
-		time.RFC1123Z,
+		"2006-01-02 15:04:05 -0700",       // // YYYY-MM-DD HH:MM:SS with timezone offset
+		"2006-01-02 15:04:05",             // YYYY-MM-DD HH:MM:SS
+		"2006-01-02T15:04:05Z07:00",       // ISO 8601
+		"2006-01-02",                      // YYYY-MM-DD
+		"Mon, 02 Jan 2006 15:04:05 -0700", // RFC1123 with numeric zone
 	}
 	for _, l := range layouts {
 		if tm, err := time.Parse(l, string(s)); err == nil {

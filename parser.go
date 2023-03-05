@@ -120,6 +120,7 @@ type VarExpr struct {
 
 type FieldAcc struct {
 	X       Expr
+	DotPos  token.Pos
 	Name    string
 	NameEnd token.Pos
 }
@@ -627,11 +628,12 @@ Loop:
 	for !p.AtEnd() {
 		switch {
 		case p.match(token.Dot):
+			dotPos := p.previous().Pos
 			if !p.match(token.Ident) {
 				return nil, &ParseError{tok: p.peek(), msg: fmt.Sprintf("expected identifier, got %s", p.peek().Typ)}
 			}
 			ident := p.previous()
-			e = &FieldAcc{X: e, Name: ident.Val, NameEnd: ident.End}
+			e = &FieldAcc{X: e, DotPos: dotPos, Name: ident.Val, NameEnd: ident.End}
 		case p.match(token.LeftParen):
 			args, err := p.exprList(token.Comma, token.RightParen)
 			if err != nil {

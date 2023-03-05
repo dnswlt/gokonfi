@@ -267,6 +267,10 @@ func NewRec() *RecVal {
 	return &RecVal{Fields: make(map[string]Val), FieldAnnotations: make(map[string]*FieldAnnotation)}
 }
 
+func NewRecWithFields(fields map[string]Val) *RecVal {
+	return &RecVal{Fields: fields, FieldAnnotations: make(map[string]*FieldAnnotation)}
+}
+
 func (r *RecVal) setField(field string, val Val, anno *FieldAnnotation) {
 	r.Fields[field] = val
 	if anno != nil {
@@ -840,8 +844,7 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 			if v, ok := r.Fields[e.Name]; ok {
 				return v, nil
 			}
-			// TODO: Add DotPos to FieldAcc for a more accurate position.
-			return nil, &EvalError{pos: e.End(), msg: fmt.Sprintf("record has no field '%s'", e.Name)}
+			return nil, &EvalError{pos: e.DotPos, msg: fmt.Sprintf("record has no field '%s'", e.Name)}
 		case TypedVal:
 			if rv, ok := r.V.(*RecVal); ok {
 				if v, ok := rv.Fields[e.Name]; ok {
@@ -870,10 +873,10 @@ func Eval(expr Expr, ctx *Ctx) (Val, error) {
 			args[i] = val
 		}
 		res, err := f.Call(args, ctx)
-		if err == nil {
-			return res, nil
+		if err != nil {
+			return nil, &EvalError{pos: e.Func.Pos(), msg: "call failed", cause: err}
 		}
-		return nil, &EvalError{pos: e.Func.Pos(), msg: "call failed", cause: err}
+		return res, nil
 	case *FuncExpr:
 		return &FuncExprVal{F: e, ctx: ctx}, nil
 	case *ConditionalExpr:

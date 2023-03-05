@@ -738,3 +738,61 @@ func TestEvalTime(t *testing.T) {
 		})
 	}
 }
+
+func TestEvalErrorPcall(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  Val
+	}{
+		{
+			name: "pcall-error",
+			input: `
+				{
+					let f(): error(1)
+					let p: pcall(f)
+					r: if p.err then p.value else error('expected p.err to be true')
+				}.r
+			`,
+			want: IntVal(1),
+		},
+		{
+			name: "pcall-noerror",
+			input: `
+				{
+					let f(x): x + 1
+					let p: pcall(f, 1)
+					r: if p.err then error('no error expected') else p.value
+				}.r
+			`,
+			want: IntVal(2),
+		},
+		{
+			name: "pcall-error-propagate",
+			input: `
+				{
+					let f(x): if x < 0 then error('negative') else x * x
+					let g(x): f(x) + 2
+					let p: pcall(g, -1)
+					r: if p.err then p.value else error('expected p.err to be true')
+				}.r
+			`,
+			want: StringVal("negative"),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			e, err := parse(test.input)
+			if err != nil {
+				t.Fatalf("Cannot parse expression: %s", err)
+			}
+			got, err := Eval(e, GlobalCtx())
+			if err != nil {
+				t.Fatalf("Failed to evaluate: %s", err)
+			}
+			if diff := cmp.Diff(test.want, got); diff != "" {
+				t.Errorf("Value mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
